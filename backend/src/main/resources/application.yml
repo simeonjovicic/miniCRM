@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/minicrm
+    username: minicrm
+    password: minicrm
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        format_sql: true
+  main:
+    lazy-initialization: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 20
+      min-spare: 2
+
+groq:
+  api-key: api key

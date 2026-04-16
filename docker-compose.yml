@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: minicrm-postgres
+    environment:
+      POSTGRES_DB: minicrm
+      POSTGRES_USER: minicrm
+      POSTGRES_PASSWORD: minicrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "maintenance_work_mem=32MB"
+      - "-c"
+      - "effective_cache_size=128MB"
+      - "-c"
+      - "max_connections=30"
+
+volumes:
+  pgdata:

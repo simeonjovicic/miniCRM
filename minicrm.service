@@ -1,0 +1,16 @@
+[Unit]
+Description=MiniCRM
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/minicrm
+ExecStartPre=/usr/bin/docker compose up -d
+ExecStart=/usr/bin/java -Xmx384m -Xms256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -jar minicrm.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
