@@ -15,10 +15,13 @@ import FinancePage from "./pages/FinancePage";
 import TodosPage from "./pages/TodosPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import VorlagenPage from "./pages/VorlagenPage";
+import TimerPage from "./pages/TimerPage";
 import SyncStatusBadge from "./components/SyncStatusBadge";
+import TimerWidget from "./components/TimerWidget";
 import { ToastProvider, useToast } from "./components/Toast";
 import SearchModal from "./components/SearchModal";
 import { connect, subscribe } from "./services/websocket";
+import { TimerProvider } from "./context/TimerContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
@@ -27,6 +30,7 @@ const NAV_ITEMS = [
   { to: "/finance", label: "Finanzen" },
   { to: "/analytics", label: "Analyse" },
   { to: "/vorlagen", label: "Vorlagen" },
+  { to: "/timer", label: "Zeiten" },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -59,7 +63,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <AppShell user={user} onLogout={() => setUser(null)} />
+        <TimerProvider user={user}>
+          <AppShell user={user} onLogout={() => setUser(null)} />
+        </TimerProvider>
       </ToastProvider>
     </BrowserRouter>
   );
@@ -182,6 +188,8 @@ function AppShell({
         </div>
       </nav>
 
+      <TimerWidget />
+
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Routes>
           <Route path="/" element={<DashboardPage user={user} />} />
@@ -197,6 +205,7 @@ function AppShell({
           <Route path="/finance" element={<FinancePage user={user} />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/vorlagen" element={<VorlagenPage />} />
+          <Route path="/timer" element={<TimerPage user={user} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

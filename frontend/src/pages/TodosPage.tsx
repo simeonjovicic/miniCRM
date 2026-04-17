@@ -15,7 +15,9 @@ export default function TodosPage({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState("");
   const [filterUser, setFilterUser] = useState<string>("ALL");
+  const [filterPriority, setFilterPriority] = useState<string>("ALL");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Autocomplete state
@@ -165,10 +167,15 @@ export default function TodosPage({ user }: { user: User }) {
     ),
   );
 
-  const filtered =
-    filterUser === "ALL"
-      ? todos
-      : todos.filter((t) => t.createdBy === filterUser);
+  const byUser =
+    filterUser === "ALL" ? todos : todos.filter((t) => t.createdBy === filterUser);
+
+  const byPriority =
+    filterPriority === "ALL" ? byUser : byUser.filter((t) => t.priority === filterPriority);
+
+  const openTodos = byPriority.filter((t) => !t.done);
+  const completedTodos = byPriority.filter((t) => t.done);
+  const totalOpen = todos.filter((t) => !t.done).length;
 
   if (loading) {
     return <p className="text-sm text-text-secondary">Lade Todos...</p>;
@@ -176,7 +183,12 @@ export default function TodosPage({ user }: { user: User }) {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-bold text-text-bright">Todos</h1>
+      <div className="mb-6 flex items-center gap-3">
+        <h1 className="text-xl font-bold text-text-bright">Todos</h1>
+        <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
+          {totalOpen} offen
+        </span>
+      </div>
 
       {/* Apple-style input bar with autocomplete */}
       <form onSubmit={handleAdd} className="relative mb-6">
@@ -218,127 +230,196 @@ export default function TodosPage({ user }: { user: User }) {
         )}
       </form>
 
-      {/* Filter */}
-      {users.length > 1 && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-xs text-text-secondary">Filter:</span>
-          <button
-            onClick={() => setFilterUser("ALL")}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-              filterUser === "ALL"
-                ? "bg-accent text-white"
-                : "bg-card border border-border text-text-secondary hover:text-text-bright"
-            }`}
-          >
-            Alle
-          </button>
-          {users.map(([id, name]) => (
+      {/* Filters */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {/* Priority filter */}
+        <div className="flex items-center gap-1.5">
+          {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((p) => (
             <button
-              key={id}
-              onClick={() => setFilterUser(id)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                filterUser === id
+              key={p}
+              onClick={() => setFilterPriority(p)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                filterPriority === p
                   ? "bg-accent text-white"
-                  : "bg-card border border-border text-text-secondary hover:text-text-bright"
+                  : "border border-border bg-card text-text-secondary hover:text-text-bright"
               }`}
             >
-              {name}
+              {p !== "ALL" && (
+                <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_COLORS[p]}`} />
+              )}
+              {p === "ALL" ? "Alle" : p === "HIGH" ? "Hoch" : p === "MEDIUM" ? "Mittel" : "Niedrig"}
             </button>
           ))}
         </div>
-      )}
 
-      {/* Todo list */}
-      {filtered.length === 0 ? (
-        <p className="text-sm text-text-secondary">Keine Todos vorhanden.</p>
-      ) : (
-        <ul className="space-y-1">
-          {filtered.map((todo) => (
-            <li key={todo.id}>
-              <div
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
-                  expandedId === todo.id ? "bg-card shadow-sm" : "hover:bg-card"
+        {/* User filter (only when multiple users) */}
+        {users.length > 1 && (
+          <>
+            <span className="text-border">|</span>
+            <button
+              onClick={() => setFilterUser("ALL")}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                filterUser === "ALL"
+                  ? "bg-accent text-white"
+                  : "border border-border bg-card text-text-secondary hover:text-text-bright"
+              }`}
+            >
+              Alle
+            </button>
+            {users.map(([id, name]) => (
+              <button
+                key={id}
+                onClick={() => setFilterUser(id)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                  filterUser === id
+                    ? "bg-accent text-white"
+                    : "border border-border bg-card text-text-secondary hover:text-text-bright"
                 }`}
               >
-                {/* Checkbox */}
-                <button
-                  onClick={() => handleToggleDone(todo)}
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
-                    todo.done
-                      ? "border-accent bg-accent text-white"
-                      : "border-border hover:border-accent/50"
-                  }`}
-                >
-                  {todo.done && (
-                    <svg
-                      className="h-3 w-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  )}
-                </button>
+                {name}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
 
-                {/* Priority dot */}
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLORS[todo.priority]}`}
-                />
-
-                {/* Title + meta */}
-                <button
-                  onClick={() =>
-                    setExpandedId(expandedId === todo.id ? null : todo.id)
-                  }
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                >
-                  <span
-                    className={`truncate text-sm ${
-                      todo.done
-                        ? "text-text-secondary line-through"
-                        : "text-text-bright"
-                    }`}
-                  >
-                    <HighlightMentions
-                      text={todo.title}
-                      customerNames={customers.map((c) => c.name)}
-                      dimmed={todo.done}
-                    />
-                  </span>
-                  {todo.dueDate && (
-                    <span className="shrink-0 font-mono text-[11px] text-text-secondary">
-                      {new Date(todo.dueDate).toLocaleDateString("de-DE")}
-                    </span>
-                  )}
-                </button>
-
-                {/* User badge */}
-                <span className="shrink-0 text-[11px] text-text-secondary">
-                  {todo.createdByUsername}
-                </span>
-              </div>
-
-              {/* Expanded detail panel */}
-              {expandedId === todo.id && (
-                <TodoDetail
-                  todo={todo}
-                  isOwner={todo.createdBy === user.id}
-                  customerNames={customers.map((c) => c.name)}
-                  onUpdate={(changes) => handleUpdate(todo.id, changes)}
-                  onDelete={() => handleDelete(todo.id)}
-                />
-              )}
-            </li>
+      {/* Open todos */}
+      {openTodos.length === 0 ? (
+        <p className="text-sm text-text-secondary">Keine offenen Todos.</p>
+      ) : (
+        <ul className="space-y-1">
+          {openTodos.map((todo) => (
+            <TodoRow
+              key={todo.id}
+              todo={todo}
+              expandedId={expandedId}
+              setExpandedId={setExpandedId}
+              onToggle={handleToggleDone}
+              onUpdate={handleUpdate}
+              onDelete={handleDelete}
+              customers={customers}
+              userId={user.id}
+            />
           ))}
         </ul>
       )}
+
+      {/* Completed section */}
+      {completedTodos.length > 0 && (
+        <div className="mt-6">
+          <button
+            onClick={() => setCompletedExpanded((v) => !v)}
+            className="mb-2 flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-bright transition-colors"
+          >
+            <svg
+              className={`h-4 w-4 transition-transform ${completedExpanded ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+            Erledigt ({completedTodos.length})
+          </button>
+
+          {completedExpanded && (
+            <ul className="space-y-1 opacity-60">
+              {completedTodos.map((todo) => (
+                <TodoRow
+                  key={todo.id}
+                  todo={todo}
+                  expandedId={expandedId}
+                  setExpandedId={setExpandedId}
+                  onToggle={handleToggleDone}
+                  onUpdate={handleUpdate}
+                  onDelete={handleDelete}
+                  customers={customers}
+                  userId={user.id}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function TodoRow({
+  todo,
+  expandedId,
+  setExpandedId,
+  onToggle,
+  onUpdate,
+  onDelete,
+  customers,
+  userId,
+}: {
+  todo: TodoItem;
+  expandedId: string | null;
+  setExpandedId: (id: string | null) => void;
+  onToggle: (todo: TodoItem) => void;
+  onUpdate: (id: string, changes: Partial<TodoItem>) => void;
+  onDelete: (id: string) => void;
+  customers: Customer[];
+  userId: string;
+}) {
+  return (
+    <li>
+      <div
+        className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
+          expandedId === todo.id ? "bg-card shadow-sm" : "hover:bg-card"
+        }`}
+      >
+        <button
+          onClick={() => onToggle(todo)}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+            todo.done
+              ? "border-accent bg-accent text-white"
+              : "border-border hover:border-accent/50"
+          }`}
+        >
+          {todo.done && (
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+
+        <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLORS[todo.priority]}`} />
+
+        <button
+          onClick={() => setExpandedId(expandedId === todo.id ? null : todo.id)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <span className={`truncate text-sm ${todo.done ? "text-text-secondary line-through" : "text-text-bright"}`}>
+            <HighlightMentions
+              text={todo.title}
+              customerNames={customers.map((c) => c.name)}
+              dimmed={todo.done}
+            />
+          </span>
+          {todo.dueDate && (
+            <span className="shrink-0 font-mono text-[11px] text-text-secondary">
+              {new Date(todo.dueDate).toLocaleDateString("de-DE")}
+            </span>
+          )}
+        </button>
+
+        <span className="shrink-0 text-[11px] text-text-secondary">{todo.createdByUsername}</span>
+      </div>
+
+      {expandedId === todo.id && (
+        <TodoDetail
+          todo={todo}
+          isOwner={todo.createdBy === userId}
+          customerNames={customers.map((c) => c.name)}
+          onUpdate={(changes) => onUpdate(todo.id, changes)}
+          onDelete={() => onDelete(todo.id)}
+        />
+      )}
+    </li>
   );
 }
 

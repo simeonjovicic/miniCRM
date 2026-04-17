@@ -1,0 +1,11 @@
+com/collabcrm/repository/CustomerRepositoryTest.class
+com/collabcrm/controller/UserControllerTest.class
+com/collabcrm/service/CrdtSyncServiceTest.class
+com/collabcrm/crdt/LamportClockTest.class
+com/collabcrm/crdt/ORSetTest.class
+com/collabcrm/repository/UserRepositoryTest.class
+com/collabcrm/service/UserServiceTest.class
+com/collabcrm/service/CustomerServiceTest.class
+com/collabcrm/controller/CustomerControllerTest.class
+com/collabcrm/crdt/PNCounterTest.class
+com/collabcrm/crdt/LWWRegisterTest.class

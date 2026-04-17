@@ -1,4 +1,4 @@
-import type { User, Customer, TodoItem, FinanceEntry } from "../types";
+import type { User, Customer, TodoItem, FinanceEntry, TimeEntry } from "../types";
 
 /** Basis-URL für alle API-Aufrufe. In Produktion gleicher Origin, in Dev per Vite Proxy. */
 const BASE = "/api";
@@ -121,6 +121,32 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify({ message, tone, history }),
     }),
+};
+
+// =====================================================
+// Time Entries API — Zeiterfassung
+// =====================================================
+export const timeEntriesApi = {
+  list: () => request<TimeEntry[]>("/time-entries"),
+  getActive: (userId: string) =>
+    request<TimeEntry | null>(`/time-entries/active/${userId}`).catch(() => null),
+  start: (userId: string, username: string, description: string) =>
+    request<TimeEntry>("/time-entries/start", {
+      method: "POST",
+      body: JSON.stringify({ userId, username, description }),
+    }),
+  stop: (id: string, durationSeconds?: number) =>
+    request<TimeEntry>(`/time-entries/${id}/stop`, {
+      method: "PUT",
+      body: JSON.stringify({ durationSeconds }),
+    }),
+  updateDescription: (id: string, description: string) =>
+    request<TimeEntry>(`/time-entries/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ description }),
+    }),
+  delete: (id: string) =>
+    request<void>(`/time-entries/${id}`, { method: "DELETE" }),
 };
 
 export const financeApi = {

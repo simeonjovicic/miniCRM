@@ -39,3 +39,15 @@ export interface FinanceEntry {
   createdByUsername: string | null;
   createdAt: string;
 }
+
+export interface TimeEntry {
+  id: string;
+  description: string | null;
+  userId: string;
+  username: string | null;
+  startedAt: string;
+  stoppedAt: string | null;
+  durationSeconds: number | null;
+  customerId: string | null;
+  todoId: string | null;
+}
