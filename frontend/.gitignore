@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Maven
+target/
+
+# Mac
+.DS_Store
