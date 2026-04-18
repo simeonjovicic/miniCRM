@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PI_HOST="${1:-pi@raspberrypi.local}"
+PI_HOST="${1:-pi@100.120.87.43}"
 PI_DIR="/home/pi/minicrm"
 
 echo "=== MiniCRM — Build & Deploy auf Pi ==="
@@ -33,9 +33,13 @@ scp "$JAR" "$PI_HOST:$PI_DIR/minicrm.jar"
 scp docker-compose.yml "$PI_HOST:$PI_DIR/"
 scp minicrm.service "$PI_HOST:$PI_DIR/"
 
-# 5. Service neustarten
-echo "→ Service neustarten..."
-ssh "$PI_HOST" "cd $PI_DIR && docker compose up -d && sudo systemctl restart minicrm"
+# 5. .env erstellen falls nicht vorhanden
+ssh "$PI_HOST" "test -f $PI_DIR/.env || echo 'ACHTUNG: $PI_DIR/.env fehlt! Bitte anlegen (siehe .env.example)' && exit 0"
+
+# 6. systemd Service installieren + neustarten
+echo "→ Service einrichten..."
+ssh "$PI_HOST" "sudo cp $PI_DIR/minicrm.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable minicrm && sudo systemctl restart minicrm"
 
 echo ""
-echo "=== Fertig! App läuft auf http://$(echo $PI_HOST | cut -d@ -f2):8080 ==="
+echo "=== Fertig! App laeuft auf http://100.120.87.43:8080 ==="
+echo "    Logs: ssh $PI_HOST 'journalctl -u minicrm -f'"

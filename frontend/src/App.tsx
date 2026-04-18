@@ -4,8 +4,9 @@ import {
   Route,
   Navigate,
   NavLink,
+  useLocation,
 } from "react-router-dom";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { User } from "./types";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -16,6 +17,7 @@ import TodosPage from "./pages/TodosPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import VorlagenPage from "./pages/VorlagenPage";
 import TimerPage from "./pages/TimerPage";
+import StoragePage from "./pages/StoragePage";
 import SyncStatusBadge from "./components/SyncStatusBadge";
 import TimerWidget from "./components/TimerWidget";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -27,10 +29,16 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/customers", label: "Kunden" },
   { to: "/todos", label: "Todos" },
-  { to: "/finance", label: "Finanzen" },
-  { to: "/analytics", label: "Analyse" },
+  {
+    label: "Analyse",
+    children: [
+      { to: "/analytics", label: "Übersicht" },
+      { to: "/finance", label: "Finanzen" },
+      { to: "/timer", label: "Zeiten" },
+    ],
+  },
   { to: "/vorlagen", label: "Vorlagen" },
-  { to: "/timer", label: "Zeiten" },
+  { to: "/storage", label: "Storage" },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -68,6 +76,75 @@ export default function App() {
         </TimerProvider>
       </ToastProvider>
     </BrowserRouter>
+  );
+}
+
+function AnalyseDropdown({
+  item,
+}: {
+  item: { label: string; children: { to: string; label: string }[] };
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  const isChildActive = item.children.some(
+    (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
+  );
+
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open, close]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all flex items-center gap-1 ${
+          isChildActive
+            ? "bg-accent text-white shadow-sm"
+            : "text-text-secondary hover:bg-border/50 hover:text-text-bright"
+        }`}
+      >
+        {item.label}
+        <svg
+          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 min-w-[140px] rounded-xl border border-border bg-card p-1 shadow-lg">
+          {item.children.map((child) => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              onClick={close}
+              className={({ isActive }) =>
+                `block rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all ${
+                  isActive
+                    ? "bg-accent text-white"
+                    : "text-text-secondary hover:bg-border/50 hover:text-text-bright"
+                }`
+              }
+            >
+              {child.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -133,16 +210,20 @@ function AppShell({
               MiniCRM
             </NavLink>
             <div className="flex items-center gap-1 rounded-full bg-bg p-1">
-              {NAV_ITEMS.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={navClass}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
+              {NAV_ITEMS.map((item) =>
+                "children" in item ? (
+                  <AnalyseDropdown key={item.label} item={item} />
+                ) : (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={navClass}
+                  >
+                    {item.label}
+                  </NavLink>
+                ),
+              )}
             </div>
           </div>
 
@@ -206,6 +287,7 @@ function AppShell({
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/vorlagen" element={<VorlagenPage />} />
           <Route path="/timer" element={<TimerPage user={user} />} />
+          <Route path="/storage" element={<StoragePage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

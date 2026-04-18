@@ -1,0 +1,18 @@
+# IDE
+.idea/
+*.iml
+
+# Backend
+backend/target/
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/static/
+
+# Secrets
+.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store

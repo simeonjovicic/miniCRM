@@ -17,7 +17,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`${res.status} ${res.statusText}`);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text);
 }
 
 // =====================================================
@@ -147,6 +149,47 @@ export const timeEntriesApi = {
     }),
   delete: (id: string) =>
     request<void>(`/time-entries/${id}`, { method: "DELETE" }),
+};
+
+// =====================================================
+// Storage API — Samba File Browser
+// =====================================================
+export interface StorageFile {
+  name: string;
+  directory: boolean;
+  size: number;
+  lastModified: number;
+}
+
+export const storageApi = {
+  list: (path = "") =>
+    request<StorageFile[]>(`/storage/files?path=${encodeURIComponent(path)}`),
+  downloadUrl: (path: string) =>
+    `${BASE}/storage/download?path=${encodeURIComponent(path)}`,
+  createFolder: (path: string, name: string) =>
+    request<void>("/storage/folder", {
+      method: "POST",
+      body: JSON.stringify({ path, name }),
+    }),
+  delete: (path: string, name: string) =>
+    request<void>(
+      `/storage/delete?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+  rename: (path: string, oldName: string, newName: string) =>
+    request<void>("/storage/rename", {
+      method: "PUT",
+      body: JSON.stringify({ path, oldName, newName }),
+    }),
+  upload: async (path: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(
+      `${BASE}/storage/upload?path=${encodeURIComponent(path)}`,
+      { method: "POST", body: form },
+    );
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  },
 };
 
 export const financeApi = {
