@@ -117,7 +117,7 @@ export default function VorlagenPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-text-bright">Mail-Vorlagen</h1>
-        <div className="flex items-center gap-1 rounded-full bg-bg p-1">
+        <div className="flex items-center gap-1 glass-chip rounded-full p-1">
           <button
             onClick={() => setTab("ai")}
             className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all ${
@@ -289,7 +289,7 @@ function AiChat() {
       {/* Sidebar — Quick templates + tone */}
       <div className="space-y-4 lg:col-span-1">
         {/* Tone selector */}
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="glass rounded-2xl p-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary">
             Ton
           </h3>
@@ -301,7 +301,7 @@ function AiChat() {
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-all ${
                   tone === t.value
                     ? "bg-accent text-white font-medium"
-                    : "text-text-bright hover:bg-bg"
+                    : "text-text-bright hover:bg-white/40"
                 }`}
               >
                 {t.label}
@@ -311,7 +311,7 @@ function AiChat() {
         </div>
 
         {/* Quick templates */}
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="glass rounded-2xl p-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary">
             Schnellvorlagen
           </h3>
@@ -320,7 +320,7 @@ function AiChat() {
               <button
                 key={t.id}
                 onClick={() => useTemplate(t)}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-text-bright transition-all hover:bg-bg"
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-text-bright transition-all hover:bg-white/40"
               >
                 <span>{t.name}</span>
                 <span
@@ -338,7 +338,7 @@ function AiChat() {
 
       {/* Chat area */}
       <div className="flex flex-col lg:col-span-3">
-        <div className="flex min-h-[500px] flex-col rounded-2xl border border-border bg-card shadow-sm">
+        <div className="glass flex min-h-125 flex-col rounded-2xl">
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto p-5">
             {messages.length === 0 ? (
@@ -378,7 +378,7 @@ function AiChat() {
                       className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
                         msg.role === "user"
                           ? "bg-accent text-white"
-                          : "border border-border bg-bg text-text-bright"
+                          : "glass text-text-bright"
                       }`}
                     >
                       <pre className="whitespace-pre-wrap font-sans leading-relaxed">
@@ -399,7 +399,7 @@ function AiChat() {
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="rounded-2xl border border-border bg-bg px-4 py-3">
+                    <div className="glass rounded-2xl px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60 [animation-delay:-0.3s]" />
                         <span className="h-2 w-2 animate-bounce rounded-full bg-accent/60 [animation-delay:-0.15s]" />
@@ -414,10 +414,10 @@ function AiChat() {
           </div>
 
           {/* Input area */}
-          <div className="relative border-t border-border p-4">
+          <div className="relative border-t border-white/40 p-4">
             {/* Autocomplete dropdown */}
             {suggestions.length > 0 && (
-              <div className="absolute bottom-full left-4 right-4 mb-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+              <div className="glass-strong absolute bottom-full left-4 right-4 mb-1 overflow-hidden rounded-xl shadow-lg">
                 {suggestions.map((c, i) => (
                   <button
                     key={c.id}
@@ -426,7 +426,7 @@ function AiChat() {
                     className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                       i === selectedIdx
                         ? "bg-accent/10 text-accent"
-                        : "text-text-bright hover:bg-bg"
+                        : "text-text-bright hover:bg-white/50"
                     }`}
                   >
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
@@ -444,7 +444,7 @@ function AiChat() {
             )}
 
             <div className="flex items-end gap-3">
-              <div className="flex items-center gap-2 rounded-full bg-bg px-3 py-1.5 text-[11px] font-medium text-text-secondary">
+              <div className="flex items-center gap-2 glass-chip rounded-full px-3 py-1.5 text-[11px] font-medium text-text-secondary">
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     tone === "formal"
@@ -465,7 +465,7 @@ function AiChat() {
                 onKeyDown={handleKeyDown}
                 placeholder="Schreibe Followup für @Kundenname..."
                 rows={2}
-                className="min-h-[44px] flex-1 resize-none rounded-xl border border-border bg-bg px-4 py-2.5 text-sm text-text-bright outline-none placeholder:text-text-secondary focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                className="glass-input min-h-11 flex-1 resize-none rounded-xl px-4 py-2.5 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
               />
               <button
                 onClick={handleSend}
@@ -500,7 +500,7 @@ function TemplateList() {
       {TEMPLATES.map((t) => (
         <div
           key={t.id}
-          className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md"
+          className="glass rounded-2xl p-5 transition-all hover:bg-white/70"
         >
           <div className="mb-3 flex items-start justify-between">
             <div>
@@ -520,7 +520,7 @@ function TemplateList() {
             </span>
           </div>
 
-          <pre className="whitespace-pre-wrap rounded-xl bg-bg p-4 font-sans text-xs leading-relaxed text-text-secondary">
+          <pre className="whitespace-pre-wrap rounded-xl bg-white/40 p-4 font-sans text-xs leading-relaxed text-text-secondary">
             {t.body}
           </pre>
 

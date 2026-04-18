@@ -61,7 +61,7 @@ export default function TimerWidget() {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
       {/* Description row */}
-      <div className="flex items-center rounded-full border border-border bg-card/90 px-3 py-1.5 shadow-lg backdrop-blur-sm">
+      <div className="glass flex items-center rounded-full border-white/50 px-3 py-1.5 shadow-lg">
         {editingDesc ? (
           <input
             ref={inputRef}
@@ -86,7 +86,7 @@ export default function TimerWidget() {
       <div
         className={`flex items-center gap-1 rounded-full shadow-lg transition-all ${
           paused
-            ? "border border-border bg-card/90 backdrop-blur-sm"
+            ? "glass border-white/50"
             : "bg-status-customer shadow-status-customer/30"
         }`}
       >

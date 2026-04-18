@@ -33,11 +33,11 @@ export default function TodoList({ todos, onAdd, onRemove }: TodoListProps) {
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="Neues Todo..."
-          className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+          className="glass-input flex-1 rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
         />
         <button
           type="submit"
-          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-dim active:scale-95 transition-all"
+          className="btn-shimmer rounded-lg px-3 py-2 text-sm font-medium text-white active:scale-95 transition-all"
         >
           +
         </button>
@@ -52,16 +52,16 @@ export default function TodoList({ todos, onAdd, onRemove }: TodoListProps) {
             return (
               <li
                 key={id}
-                className="flex items-center justify-between rounded-lg bg-bg px-3 py-2"
+                className="flex items-center justify-between rounded-lg bg-white/40 px-3 py-2"
               >
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-block h-2 w-2 rounded-full ${
                       todo.priority === "HIGH"
-                        ? "bg-[#ff453a]"
+                        ? "bg-status-churned"
                         : todo.priority === "LOW"
-                          ? "bg-[#30d158]"
-                          : "bg-[#ff9f0a]"
+                          ? "bg-status-customer"
+                          : "bg-status-lead"
                     }`}
                   />
                   <span
@@ -76,7 +76,7 @@ export default function TodoList({ todos, onAdd, onRemove }: TodoListProps) {
                 </div>
                 <button
                   onClick={() => onRemove(id)}
-                  className="text-xs text-text-secondary hover:text-[#ff453a] transition-colors"
+                  className="text-xs text-text-secondary hover:text-status-churned transition-colors"
                 >
                   Entfernen
                 </button>

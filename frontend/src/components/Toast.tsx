@@ -63,16 +63,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex items-center gap-2.5 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-xl transition-all duration-300 ${
+            className={`glass-strong flex items-center gap-2.5 rounded-xl px-4 py-2.5 transition-all duration-300 ${
               t.exiting
                 ? "translate-x-[120%] opacity-0"
                 : "translate-x-0 opacity-100"
             } ${
               t.type === "success"
-                ? "border-[#30d158]/20 bg-[#30d158]/10 text-[#1fa03f]"
+                ? "border-status-customer/30! bg-status-customer/12! text-[#1a8f3e]"
                 : t.type === "warning"
-                  ? "border-[#ff9f0a]/20 bg-[#ff9f0a]/10 text-[#c77d08]"
-                  : "border-border bg-card/95 text-text-bright"
+                  ? "border-status-lead/30! bg-status-lead/12! text-[#c77d08]"
+                  : "text-text-bright"
             }`}
           >
             <span

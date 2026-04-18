@@ -39,7 +39,7 @@ export default function LoginPage({
 
   return (
     <div className="flex min-h-svh items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl bg-card p-8 border border-border shadow-lg shadow-black/5">
+      <div className="glass-strong w-full max-w-md rounded-2xl p-8">
         <h1 className="mb-1 text-2xl font-bold text-text-bright">
           MiniCRM
         </h1>
@@ -64,7 +64,7 @@ export default function LoginPage({
                   <button
                     key={u.id}
                     onClick={() => handleSelect(u)}
-                    className="flex w-full items-center justify-between rounded-xl bg-bg p-3 text-left hover:bg-card-hover active:scale-[0.99] transition-all"
+                    className="glass-chip flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-white/60 active:scale-[0.99] transition-all"
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">
@@ -88,7 +88,7 @@ export default function LoginPage({
             )}
             <button
               onClick={() => setMode("create")}
-              className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-dim active:scale-[0.98] transition-all"
+              className="btn-shimmer w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white active:scale-[0.98] transition-all"
             >
               Neuen User erstellen
             </button>
@@ -104,7 +104,7 @@ export default function LoginPage({
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-text-bright"
               />
             </div>
             <div>
@@ -115,7 +115,7 @@ export default function LoginPage({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-text-bright"
               />
             </div>
             <div>
@@ -124,7 +124,7 @@ export default function LoginPage({
                 id="role"
                 value={role}
                 onChange={(e) => setRole(e.target.value as User["role"])}
-                className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-text-bright"
               >
                 <option value="ADMIN">Admin</option>
                 <option value="SALES">Sales</option>
@@ -135,13 +135,13 @@ export default function LoginPage({
               <button
                 type="button"
                 onClick={() => setMode("select")}
-                className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-bg transition-all"
+                className="glass-chip flex-1 rounded-xl px-4 py-2.5 text-sm font-medium text-text-bright hover:bg-white/60 transition-all"
               >
                 Zurück
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-dim active:scale-[0.98] transition-all"
+                className="btn-shimmer flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white active:scale-[0.98] transition-all"
               >
                 Erstellen & Login
               </button>

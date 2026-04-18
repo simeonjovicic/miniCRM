@@ -15,13 +15,9 @@ export default function CustomerListPage({ user }: { user: User }) {
   const [newCompany, setNewCompany] = useState("");
   const [newEmail, setNewEmail] = useState("");
 
-  const reload = useCallback(() => {
-    customersApi.list().then(setCustomers);
-  }, []);
+  const reload = useCallback(() => { customersApi.list().then(setCustomers); }, []);
 
-  useEffect(() => {
-    customersApi.list().then(setCustomers).finally(() => setLoading(false));
-  }, []);
+  useEffect(() => { customersApi.list().then(setCustomers).finally(() => setLoading(false)); }, []);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
@@ -29,10 +25,7 @@ export default function CustomerListPage({ user }: { user: User }) {
       clearTimeout(timeout);
       timeout = setTimeout(reload, 1000);
     });
-    return () => {
-      unsub();
-      clearTimeout(timeout);
-    };
+    return () => { unsub(); clearTimeout(timeout); };
   }, [reload]);
 
   const filtered = customers.filter(
@@ -43,16 +36,9 @@ export default function CustomerListPage({ user }: { user: User }) {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const created = await customersApi.create({
-      name: newName,
-      company: newCompany || null,
-      email: newEmail || null,
-      createdBy: user.id,
-    });
+    const created = await customersApi.create({ name: newName, company: newCompany || null, email: newEmail || null, createdBy: user.id });
     setCustomers((prev) => [...prev, created]);
-    setNewName("");
-    setNewCompany("");
-    setNewEmail("");
+    setNewName(""); setNewCompany(""); setNewEmail("");
     setShowCreate(false);
   }
 
@@ -62,43 +48,20 @@ export default function CustomerListPage({ user }: { user: User }) {
         <h1 className="text-xl font-bold text-text-bright">Kunden</h1>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dim active:scale-[0.98] transition-all"
+          className="btn-shimmer rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] transition-all"
         >
           {showCreate ? "Abbrechen" : "+ Neuer Kunde"}
         </button>
       </div>
 
       {showCreate && (
-        <form
-          onSubmit={handleCreate}
-          className="mb-6 rounded-2xl border border-border bg-card p-5 shadow-sm"
-        >
+        <form onSubmit={handleCreate} className="glass mb-6 rounded-2xl p-5">
           <div className="grid grid-cols-3 gap-3">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Name *"
-              required
-              className="rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-            />
-            <input
-              value={newCompany}
-              onChange={(e) => setNewCompany(e.target.value)}
-              placeholder="Firma"
-              className="rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-            />
-            <input
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="Email"
-              type="email"
-              className="rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-            />
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name *" required className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
+            <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Firma" className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
+            <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" type="email" className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
           </div>
-          <button
-            type="submit"
-            className="mt-3 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dim active:scale-[0.98] transition-all"
-          >
+          <button type="submit" className="btn-shimmer mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] transition-all">
             Erstellen
           </button>
         </form>
@@ -108,7 +71,7 @@ export default function CustomerListPage({ user }: { user: User }) {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Suche nach Name oder Firma..."
-        className="mb-4 w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+        className="glass-input mb-4 w-full rounded-xl px-4 py-2.5 text-sm text-text-bright"
       />
 
       {loading ? (
@@ -116,10 +79,10 @@ export default function CustomerListPage({ user }: { user: User }) {
       ) : filtered.length === 0 ? (
         <p className="text-sm text-text-secondary">Keine Kunden gefunden.</p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="glass overflow-hidden rounded-2xl">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-wider text-text-secondary">
+              <tr className="border-b border-white/40 text-xs uppercase tracking-wider text-text-secondary">
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Firma</th>
                 <th className="px-5 py-3 font-medium">Email</th>
@@ -131,18 +94,12 @@ export default function CustomerListPage({ user }: { user: User }) {
                 <tr
                   key={c.id}
                   onClick={() => navigate(`/customers/${c.id}`)}
-                  className="cursor-pointer border-b border-border last:border-0 hover:bg-bg transition-colors"
+                  className="cursor-pointer border-b border-white/30 last:border-0 hover:bg-white/40 transition-colors"
                 >
-                  <td className="px-5 py-3.5 font-medium text-text-bright">
-                    {c.name}
-                  </td>
+                  <td className="px-5 py-3.5 font-medium text-text-bright">{c.name}</td>
                   <td className="px-5 py-3.5 text-text-secondary">{c.company ?? "—"}</td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-text-secondary">
-                    {c.email ?? "—"}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <CustomerStatusBadge status={c.status} />
-                  </td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-text-secondary">{c.email ?? "—"}</td>
+                  <td className="px-5 py-3.5"><CustomerStatusBadge status={c.status} /></td>
                 </tr>
               ))}
             </tbody>

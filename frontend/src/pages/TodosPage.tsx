@@ -198,12 +198,12 @@ export default function TodosPage({ user }: { user: User }) {
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Neues Todo hinzufügen... (@Kunde für Erwähnung)"
-          className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-text-bright outline-none placeholder:text-text-secondary focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+          className="glass-input w-full rounded-xl px-4 py-3 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
         />
 
         {/* Autocomplete dropdown */}
         {suggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          <div className="glass-strong absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl shadow-lg">
             {suggestions.map((c, i) => (
               <button
                 key={c.id}
@@ -212,7 +212,7 @@ export default function TodosPage({ user }: { user: User }) {
                 className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                   i === selectedIdx
                     ? "bg-accent/10 text-accent"
-                    : "text-text-bright hover:bg-bg"
+                    : "text-text-bright hover:bg-white/50"
                 }`}
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
@@ -241,7 +241,7 @@ export default function TodosPage({ user }: { user: User }) {
               className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
                 filterPriority === p
                   ? "bg-accent text-white"
-                  : "border border-border bg-card text-text-secondary hover:text-text-bright"
+                  : "glass-chip text-text-secondary hover:text-text-bright"
               }`}
             >
               {p !== "ALL" && (
@@ -261,7 +261,7 @@ export default function TodosPage({ user }: { user: User }) {
               className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                 filterUser === "ALL"
                   ? "bg-accent text-white"
-                  : "border border-border bg-card text-text-secondary hover:text-text-bright"
+                  : "glass-chip text-text-secondary hover:text-text-bright"
               }`}
             >
               Alle
@@ -273,7 +273,7 @@ export default function TodosPage({ user }: { user: User }) {
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                   filterUser === id
                     ? "bg-accent text-white"
-                    : "border border-border bg-card text-text-secondary hover:text-text-bright"
+                    : "glass-chip text-text-secondary hover:text-text-bright"
                 }`}
               >
                 {name}
@@ -369,7 +369,7 @@ function TodoRow({
     <li>
       <div
         className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
-          expandedId === todo.id ? "bg-card shadow-sm" : "hover:bg-card"
+          expandedId === todo.id ? "glass" : "hover:bg-white/40"
         }`}
       >
         <button
@@ -485,7 +485,7 @@ function TodoDetail({
   }
 
   return (
-    <div className="ml-11 mr-4 mb-2 rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className="ml-11 mr-4 mb-2 glass rounded-xl p-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="mb-1 block text-xs font-medium text-text-secondary">Titel</label>
@@ -495,7 +495,7 @@ function TodoDetail({
               setTitle(e.target.value);
               save({ title: e.target.value });
             }}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           />
           {/* Preview with highlights */}
           {customerNames.some((n) => title.toLowerCase().includes(`@${n.toLowerCase()}`)) && (
@@ -514,7 +514,7 @@ function TodoDetail({
               setPriority(v);
               onUpdate({ priority: v });
             }}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           >
             <option value="LOW">Niedrig</option>
             <option value="MEDIUM">Mittel</option>
@@ -530,7 +530,7 @@ function TodoDetail({
               setDueDate(e.target.value);
               onUpdate({ dueDate: e.target.value || null });
             }}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           />
         </div>
         <div className="col-span-2">
@@ -542,7 +542,7 @@ function TodoDetail({
               save({ notes: e.target.value });
             }}
             rows={2}
-            className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            className="glass-input w-full resize-none rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           />
         </div>
       </div>

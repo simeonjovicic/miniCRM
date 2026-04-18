@@ -154,9 +154,9 @@ export default function SearchModal({
 
       {/* Modal */}
       <div className="fixed left-1/2 top-[20%] z-[201] w-full max-w-lg -translate-x-1/2">
-        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="glass-strong overflow-hidden rounded-2xl">
           {/* Search input */}
-          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <div className="flex items-center gap-3 border-b border-white/40 px-4 py-3">
             <svg
               className="h-5 w-5 shrink-0 text-text-secondary"
               fill="none"
@@ -178,7 +178,7 @@ export default function SearchModal({
               placeholder="Kunden, Todos, Finanzen suchen..."
               className="flex-1 bg-transparent text-sm text-text-bright outline-none placeholder:text-text-secondary"
             />
-            <kbd className="rounded-md bg-bg px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+            <kbd className="glass-chip rounded-md px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
               ESC
             </kbd>
           </div>
@@ -206,7 +206,7 @@ export default function SearchModal({
                       <button
                         onClick={() => handleSelect(r)}
                         className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                          i === selectedIdx ? "bg-accent/10" : "hover:bg-bg"
+                          i === selectedIdx ? "bg-accent/10" : "hover:bg-white/50"
                         }`}
                       >
                         <span
@@ -223,7 +223,7 @@ export default function SearchModal({
                           </p>
                         </div>
                         {i === selectedIdx && (
-                          <kbd className="rounded-md bg-bg px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+                          <kbd className="glass-chip rounded-md px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
                             ↵
                           </kbd>
                         )}
@@ -237,13 +237,13 @@ export default function SearchModal({
 
           {/* Footer */}
           {results.length > 0 && (
-            <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[11px] text-text-secondary">
+            <div className="flex items-center gap-4 border-t border-white/40 px-4 py-2 text-[11px] text-text-secondary">
               <span>
-                <kbd className="rounded bg-bg px-1 py-0.5 font-mono">↑↓</kbd>{" "}
+                <kbd className="glass-chip rounded px-1 py-0.5 font-mono">↑↓</kbd>{" "}
                 navigieren
               </span>
               <span>
-                <kbd className="rounded bg-bg px-1 py-0.5 font-mono">↵</kbd>{" "}
+                <kbd className="glass-chip rounded px-1 py-0.5 font-mono">↵</kbd>{" "}
                 öffnen
               </span>
             </div>

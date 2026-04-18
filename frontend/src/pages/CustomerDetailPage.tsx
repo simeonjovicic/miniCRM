@@ -75,7 +75,7 @@ export default function CustomerDetailPage({
         &larr; Zurück zur Liste
       </button>
 
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="glass rounded-2xl p-6">
         {/* Presence */}
         {id && (
           <div className="mb-4">
@@ -126,7 +126,7 @@ export default function CustomerDetailPage({
             <select
               value={displayStatus}
               onChange={(e) => handleStatusChange(e.target.value)}
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-bright outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+              className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
             >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -138,7 +138,7 @@ export default function CustomerDetailPage({
         </div>
 
         {/* Contact Counter */}
-        <div className="mt-6 border-t border-border pt-6">
+        <div className="mt-6 border-t border-white/40 pt-6">
           <ContactCounter
             label="Kontaktaufnahmen"
             value={crdt.getCounter("contactCount")}
@@ -148,7 +148,7 @@ export default function CustomerDetailPage({
         </div>
 
         {/* Todo List */}
-        <div className="mt-6 border-t border-border pt-6">
+        <div className="mt-6 border-t border-white/40 pt-6">
           <TodoList
             todos={crdt.todos}
             onAdd={(todo) => crdt.addTodo(todo)}
@@ -157,7 +157,7 @@ export default function CustomerDetailPage({
         </div>
 
         {/* Actions */}
-        <div className="mt-6 border-t border-border pt-6">
+        <div className="mt-6 border-t border-white/40 pt-6">
           <button
             onClick={handleDelete}
             className="rounded-xl border border-[#ff453a]/30 px-4 py-2 text-sm font-medium text-[#ff453a] hover:bg-[#ff453a]/5 active:scale-[0.98] transition-all"

@@ -97,7 +97,7 @@ export default function AnalyticsPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Status Distribution */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="glass rounded-2xl p-5">
           <h2 className="mb-4 text-sm font-semibold text-text-bright">Status-Verteilung</h2>
 
           {/* Bar chart */}
@@ -139,7 +139,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Monthly Trend */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="glass rounded-2xl p-5">
           <h2 className="mb-4 text-sm font-semibold text-text-bright">Neue Kunden (6 Monate)</h2>
           <div className="flex items-end gap-2" style={{ height: 160 }}>
             {months.map((m) => {
@@ -161,7 +161,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Pipeline funnel */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm lg:col-span-2">
+        <div className="glass rounded-2xl p-5 lg:col-span-2">
           <h2 className="mb-4 text-sm font-semibold text-text-bright">Pipeline</h2>
           <div className="space-y-2">
             {(["LEAD", "PROSPECT", "CUSTOMER", "CHURNED"] as Status[]).map((s) => {
@@ -204,7 +204,7 @@ function KpiCard({
   color?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div className="glass rounded-2xl p-4">
       <p className="text-xs font-medium text-text-secondary">{label}</p>
       <p className={`mt-1 font-mono text-2xl font-bold ${color}`}>{value}</p>
       {sub && <p className="mt-0.5 text-[10px] text-text-secondary">{sub}</p>}

@@ -229,7 +229,7 @@ export default function TimerPage({ user }: { user: User }) {
 
       {/* Period + user filter */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded-full bg-bg p-1">
+        <div className="flex items-center gap-1.5 glass-chip rounded-full p-1">
           {(["week", "month", "all"] as Period[]).map((p) => (
             <button
               key={p}
@@ -253,7 +253,7 @@ export default function TimerPage({ user }: { user: User }) {
               className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                 filterUser === "ALL"
                   ? "bg-accent text-white"
-                  : "border border-border bg-card text-text-secondary hover:text-text-bright"
+                  : "glass-chip text-text-secondary hover:text-text-bright"
               }`}
             >
               Alle
@@ -265,7 +265,7 @@ export default function TimerPage({ user }: { user: User }) {
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                   filterUser === id
                     ? "bg-accent text-white"
-                    : "border border-border bg-card text-text-secondary hover:text-text-bright"
+                    : "glass-chip text-text-secondary hover:text-text-bright"
                 }`}
               >
                 {name}
@@ -277,7 +277,7 @@ export default function TimerPage({ user }: { user: User }) {
 
       {/* Bar chart */}
       {chartData.length > 0 && (
-        <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        <div className="mb-6 glass rounded-xl p-4">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-secondary">
             Stunden
           </p>
@@ -302,12 +302,13 @@ export default function TimerPage({ user }: { user: User }) {
                   String(name),
                 ]}
                 contentStyle={{
-                  background: "var(--color-card, #1c1c1e)",
-                  border: "1px solid var(--color-border, #3a3a3c)",
+                  background: "rgba(255,255,255,0.85)",
+                  border: "1px solid rgba(255,255,255,0.7)",
                   borderRadius: 10,
                   fontSize: 12,
+                  backdropFilter: "blur(20px)",
                 }}
-                labelStyle={{ color: "var(--color-text-bright, #fff)" }}
+                labelStyle={{ color: "var(--color-text-bright, #1a1a2e)" }}
               />
               {allUsers.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
               {allUsers.map(([uid, uname], i) => (
@@ -371,7 +372,7 @@ export default function TimerPage({ user }: { user: User }) {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="glass rounded-xl p-4">
       <p className="mb-1 text-xs text-text-secondary">{label}</p>
       <p className="text-2xl font-bold tabular-nums text-text-bright">{value}</p>
     </div>
@@ -402,7 +403,7 @@ function EntryRow({
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-xl px-4 py-2.5 hover:bg-card transition-colors">
+    <li className="group flex items-center gap-3 rounded-xl px-4 py-2.5 hover:bg-white/40 transition-colors">
       {/* User color bar */}
       <span
         className="h-8 w-1 shrink-0 rounded-full"
@@ -429,7 +430,7 @@ function EntryRow({
             onChange={(e) => setDesc(e.target.value)}
             onBlur={handleBlur}
             onKeyDown={(e) => e.key === "Enter" && handleBlur()}
-            className="w-full rounded-md border border-border bg-bg px-2 py-1 text-sm text-text-bright outline-none focus:border-accent"
+            className="glass-input w-full rounded-md px-2 py-1 text-sm text-text-bright outline-none"
           />
         ) : (
           <button

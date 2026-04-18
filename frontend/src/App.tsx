@@ -125,7 +125,7 @@ function AnalyseDropdown({
         </svg>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 min-w-[140px] rounded-xl border border-border bg-card p-1 shadow-lg">
+        <div className="absolute top-full left-0 mt-1.5 min-w-[140px] glass-strong rounded-xl p-1">
           {item.children.map((child) => (
             <NavLink
               key={child.to}
@@ -199,17 +199,18 @@ function AppShell({
 
   return (
     <div className="min-h-svh">
-      <nav className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
+      {/* Floating glass nav */}
+      <div className="sticky top-0 z-50 px-4 pt-3 pb-1 pointer-events-none">
+        <nav className="glass-nav pointer-events-auto mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-5 py-2.5">
           {/* Logo + Tabs */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5">
             <NavLink
               to="/"
               className="text-[15px] font-bold tracking-tight text-text-bright"
             >
               MiniCRM
             </NavLink>
-            <div className="flex items-center gap-1 rounded-full bg-bg p-1">
+            <div className="flex items-center gap-0.5">
               {NAV_ITEMS.map((item) =>
                 "children" in item && item.children ? (
                   <AnalyseDropdown key={item.label} item={item as { label: string; children: { to: string; label: string }[] }} />
@@ -228,50 +229,39 @@ function AppShell({
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
-            {/* Search button */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 rounded-full bg-bg px-3 py-1.5 text-[13px] text-text-secondary transition-all hover:text-text-bright"
+              className="flex items-center gap-2 glass-chip rounded-full px-3 py-1.5 text-[13px] text-text-secondary transition-all hover:text-text-bright"
             >
-              <svg
-                className="h-3.5 w-3.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <kbd className="font-mono text-[10px]">⌘K</kbd>
             </button>
 
             <SyncStatusBadge />
-            <div className="flex items-center gap-2 rounded-full bg-bg px-3 py-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+
+            <div className="flex items-center gap-2 glass-chip rounded-full px-3 py-1.5">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white shadow-sm shadow-accent/30">
                 {user.username[0].toUpperCase()}
               </div>
-              <span className="text-[13px] font-medium text-text-bright">
-                {user.username}
-              </span>
+              <span className="text-[13px] font-medium text-text-bright">{user.username}</span>
             </div>
+
             <button
               onClick={onLogout}
-              className="rounded-full px-3 py-1.5 text-[13px] text-text-secondary hover:bg-bg hover:text-text-bright transition-all"
+              className="rounded-full px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
             >
               Logout
             </button>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       <TimerWidget />
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-6 py-6">
         <Routes>
           <Route path="/" element={<DashboardPage user={user} />} />
           <Route

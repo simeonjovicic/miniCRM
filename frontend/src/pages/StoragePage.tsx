@@ -166,7 +166,7 @@ export default function StoragePage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-[13px] font-medium text-white shadow-sm transition-all hover:bg-accent-dim disabled:opacity-50"
+            className="btn-shimmer flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-50 transition-all"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
@@ -179,7 +179,7 @@ export default function StoragePage() {
               setShowNewFolder(true);
               setNewFolderName("");
             }}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium text-text-bright shadow-sm transition-all hover:bg-card-hover"
+            className="glass flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-medium text-text-bright transition-all hover:bg-white/70"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -229,7 +229,7 @@ export default function StoragePage() {
       )}
 
       {/* File list */}
-      <div className="rounded-2xl border border-border bg-card">
+      <div className="glass rounded-2xl overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-[13px] text-text-secondary">
             Laden...
@@ -237,7 +237,7 @@ export default function StoragePage() {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+              <tr className="border-b border-white/40 text-left text-[11px] font-medium uppercase tracking-wider text-text-secondary">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3 w-28">Groesse</th>
                 <th className="px-4 py-3 w-44">Geaendert</th>
@@ -247,7 +247,7 @@ export default function StoragePage() {
             <tbody>
               {/* New folder row */}
               {showNewFolder && (
-                <tr className="border-b border-border bg-accent-light/30">
+                <tr className="border-b border-white/40 bg-accent/5">
                   <td className="px-4 py-2" colSpan={4}>
                     <div className="flex items-center gap-2">
                       <svg className="h-5 w-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -262,7 +262,7 @@ export default function StoragePage() {
                           if (e.key === "Escape") setShowNewFolder(false);
                         }}
                         placeholder="Ordnername..."
-                        className="flex-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[13px] text-text-bright outline-none focus:border-accent"
+                        className="glass-input flex-1 rounded-lg px-2.5 py-1 text-[13px] text-text-bright outline-none"
                       />
                       <button
                         onClick={handleCreateFolder}
@@ -291,7 +291,7 @@ export default function StoragePage() {
                 files.map((file) => (
                   <tr
                     key={file.name}
-                    className="border-b border-border last:border-0 hover:bg-card-hover transition-colors group"
+                    className="border-b border-white/30 last:border-0 hover:bg-white/40 transition-colors group"
                   >
                     <td className="px-4 py-2.5">
                       {renamingFile === file.name ? (
@@ -306,7 +306,7 @@ export default function StoragePage() {
                               if (e.key === "Escape") setRenamingFile(null);
                             }}
                             onBlur={() => handleRename(file.name)}
-                            className="flex-1 rounded-lg border border-accent bg-card px-2.5 py-0.5 text-[13px] text-text-bright outline-none"
+                            className="glass-input flex-1 rounded-lg border-accent! px-2.5 py-0.5 text-[13px] text-text-bright outline-none"
                           />
                         </div>
                       ) : file.directory ? (
