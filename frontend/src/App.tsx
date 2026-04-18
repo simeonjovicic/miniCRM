@@ -157,6 +157,7 @@ function AppShell({
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const { show } = useToast();
+  const location = useLocation();
 
   // Cmd+K to open search
   useEffect(() => {
@@ -262,24 +263,26 @@ function AppShell({
       <TimerWidget />
 
       <main className="mx-auto max-w-6xl px-6 py-6">
-        <Routes>
-          <Route path="/" element={<DashboardPage user={user} />} />
-          <Route
-            path="/customers"
-            element={<CustomerListPage user={user} />}
-          />
-          <Route
-            path="/customers/:id"
-            element={<CustomerDetailPage userId={user.id} />}
-          />
-          <Route path="/todos" element={<TodosPage user={user} />} />
-          <Route path="/finance" element={<FinancePage user={user} />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/vorlagen" element={<VorlagenPage />} />
-          <Route path="/timer" element={<TimerPage user={user} />} />
-          <Route path="/storage" element={<StoragePage />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+        <div key={location.pathname} className="page-enter">
+          <Routes>
+            <Route path="/" element={<DashboardPage user={user} />} />
+            <Route
+              path="/customers"
+              element={<CustomerListPage user={user} />}
+            />
+            <Route
+              path="/customers/:id"
+              element={<CustomerDetailPage userId={user.id} />}
+            />
+            <Route path="/todos" element={<TodosPage user={user} />} />
+            <Route path="/finance" element={<FinancePage user={user} />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/vorlagen" element={<VorlagenPage />} />
+            <Route path="/timer" element={<TimerPage user={user} />} />
+            <Route path="/storage" element={<StoragePage />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
       </main>
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
