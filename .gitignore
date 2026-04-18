@@ -1,18 +1,42 @@
-# IDE
+# ── IDE ────────────────────────────────────────────────
 .idea/
 *.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
 
-# Backend
-backend/target/
+# ── Java / Maven ────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# ── Spring Boot ─────────────────────────────────────────
 backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-prod.yml
 backend/src/main/resources/static/
 
-# Secrets
-.env
-
-# Frontend
-frontend/node_modules/
+# ── Node / Frontend ─────────────────────────────────────
+node_modules/
 frontend/dist/
+frontend/.vite/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# OS
+# ── Secrets / Environment ───────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── OS ──────────────────────────────────────────────────
 .DS_Store
+Thumbs.db

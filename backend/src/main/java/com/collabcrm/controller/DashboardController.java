@@ -59,7 +59,7 @@ public class DashboardController {
                 "activeCustomers", activeCustomers,
                 "churned", churned,
                 "recentCustomers", recent,
-                "onlineUsers", presenceService.getOnlineUsers()
+                "onlineUsers", presenceService.getAllUsersPresence()
         );
     }
 }

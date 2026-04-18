@@ -5,21 +5,40 @@ import { subscribe } from "../services/websocket";
 import type { User, Customer } from "../types";
 import CustomerStatusBadge from "../components/CustomerStatusBadge";
 
+type ContributorPresence = {
+  userId: string;
+  username: string;
+  online: boolean;
+  lastSeenAt: string | null;
+};
+
+/** Gibt eine lesbare relative Zeit auf Deutsch zurück, z.B. "vor 5 Min" */
+function formatRelative(iso: string | null): string {
+  if (!iso) return "noch nie online";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "gerade eben";
+  if (diffMin < 60) return `vor ${diffMin} Min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `vor ${diffH} Std`;
+  return `vor ${Math.floor(diffH / 24)} d`;
+}
+
 export default function DashboardPage({ user }: { user: User }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<{ userId: string; username: string }[]>([]);
+  const [contributors, setContributors] = useState<ContributorPresence[]>([]);
 
   useEffect(() => {
     dashboardApi.stats().then((data) => {
       setStats(data);
-      setOnlineUsers(data.onlineUsers);
+      setContributors(data.onlineUsers);
     });
   }, []);
 
   useEffect(() => {
     const unsub = subscribe("/topic/presence/online", (data) => {
-      setOnlineUsers(data as { userId: string; username: string }[]);
+      setContributors(data as ContributorPresence[]);
     });
     return unsub;
   }, []);
@@ -73,23 +92,44 @@ export default function DashboardPage({ user }: { user: User }) {
         </div>
 
         <div className="glass rounded-2xl p-5">
-          <h2 className="mb-4 text-sm font-semibold text-text-bright">Online</h2>
-          {onlineUsers.length === 0 ? (
-            <p className="text-xs text-text-secondary">Niemand online.</p>
+          <h2 className="mb-4 text-sm font-semibold text-text-bright">Mitglieder</h2>
+          {contributors.length === 0 ? (
+            <p className="text-xs text-text-secondary">Noch keine Mitglieder bekannt.</p>
           ) : (
-            <ul className="space-y-2">
-              {onlineUsers.map((u) => (
-                <li key={u.userId} className="flex items-center gap-3">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-customer opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-status-customer" />
-                  </span>
-                  <span className="text-sm text-text-bright">{u.username}</span>
-                  {u.userId === user.id && (
-                    <span className="text-xs text-text-secondary">(du)</span>
-                  )}
-                </li>
-              ))}
+            <ul className="space-y-2.5">
+              {contributors.map((u) => {
+                // Always treat the currently logged-in user as online —
+                // the REST snapshot may arrive before the WebSocket reconnects
+                // after a page refresh, which would incorrectly mark self as offline.
+                const isOnline = u.online || u.userId === user.id;
+                return (
+                  <li key={u.userId} className="flex items-center gap-3">
+                    {isOnline ? (
+                      /* Pulsierender grüner Dot — online */
+                      <span className="relative flex h-2 w-2 flex-shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-customer opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-status-customer" />
+                      </span>
+                    ) : (
+                      /* Statischer grauer Dot — offline */
+                      <span className="relative flex h-2 w-2 flex-shrink-0">
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-slate-400" />
+                      </span>
+                    )}
+                    <span className={`text-sm ${isOnline ? "text-text-bright" : "text-text-secondary"}`}>
+                      {u.username}
+                      {u.userId === user.id && (
+                        <span className="ml-1.5 text-xs opacity-60">(du)</span>
+                      )}
+                    </span>
+                    {!isOnline && (
+                      <span className="ml-auto text-[11px] text-text-secondary opacity-70">
+                        {formatRelative(u.lastSeenAt)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

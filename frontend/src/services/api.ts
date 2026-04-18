@@ -45,7 +45,7 @@ export interface DashboardStats {
   activeCustomers: number;
   churned: number;
   recentCustomers: { id: string; name: string; status: string; createdAt: string }[];
-  onlineUsers: { userId: string; username: string }[];
+  onlineUsers: { userId: string; username: string; online: boolean; lastSeenAt: string | null }[];
 }
 
 export const dashboardApi = {

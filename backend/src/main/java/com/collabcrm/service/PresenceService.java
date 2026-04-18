@@ -3,6 +3,7 @@ package com.collabcrm.service;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,6 +29,10 @@ public class PresenceService {
     private final Map<String, UserPresence> sessions = new ConcurrentHashMap<>();
     // customerId → Set von sessionIds die diesen Kunden gerade ansehen
     private final Map<String, Set<String>> customerViewers = new ConcurrentHashMap<>();
+    // userId → letzter Zeitpunkt der Trennung (null = noch nie offline gewesen)
+    private final Map<String, Instant> lastSeenAt = new ConcurrentHashMap<>();
+    // userId → UserPresence (für persistente Mitgliederliste auch für offline User)
+    private final Map<String, UserPresence> knownUsers = new ConcurrentHashMap<>();
 
     public PresenceService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
@@ -37,7 +42,9 @@ public class PresenceService {
 
     /** Wird vom WebSocketEventListener aufgerufen wenn ein User sich per WebSocket verbindet. */
     public void userConnected(String sessionId, String userId, String username) {
-        sessions.put(sessionId, new UserPresence(userId, username));
+        var presence = new UserPresence(userId, username);
+        sessions.put(sessionId, presence);
+        knownUsers.put(userId, presence); // Dauerhaft für Mitgliederliste merken
         broadcastOnlineUsers(); // Alle Clients über neuen Online-User informieren
     }
 
@@ -48,7 +55,11 @@ public class PresenceService {
      *   - Entfernt aus allen Kunden-Viewer-Listen
      */
     public void userDisconnected(String sessionId) {
-        sessions.remove(sessionId);
+        var presence = sessions.remove(sessionId);
+        // lastSeenAt setzen sobald der User offline geht
+        if (presence != null) {
+            lastSeenAt.put(presence.userId(), Instant.now());
+        }
         // Aus allen Kunden-Viewer-Listen entfernen
         for (var entry : customerViewers.entrySet()) {
             if (entry.getValue().remove(sessionId)) {
@@ -93,6 +104,32 @@ public class PresenceService {
                 .toList();
     }
 
+    /**
+     * Alle bekannten User mit Online-Status und letztem Zeitpunkt der Trennung.
+     * Wird für die "Mitglieder"-Karte auf dem Dashboard verwendet.
+     * Online-User haben lastSeenAt=null; Offline-User haben einen ISO-8601-Timestamp.
+     */
+    public List<Map<String, Object>> getAllUsersPresence() {
+        // Aktuell verbundene userIds für schnellen Lookup
+        var onlineUserIds = sessions.values().stream()
+                .map(UserPresence::userId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        return knownUsers.values().stream()
+                .distinct()
+                .map(p -> {
+                    boolean online = onlineUserIds.contains(p.userId());
+                    Instant seen = lastSeenAt.get(p.userId());
+                    Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("userId", p.userId());
+                    m.put("username", p.username());
+                    m.put("online", online);
+                    m.put("lastSeenAt", seen != null ? seen.toString() : null);
+                    return m;
+                })
+                .toList();
+    }
+
     /** Liste der User die einen bestimmten Kunden gerade ansehen. */
     public List<Map<String, String>> getCustomerViewers(String customerId) {
         var viewerSessions = customerViewers.getOrDefault(customerId, Set.of());
@@ -104,9 +141,9 @@ public class PresenceService {
                 .toList();
     }
 
-    /** Broadcastet die aktuelle Online-User-Liste an alle Clients. */
+    /** Broadcastet die vollständige Mitgliederliste (mit Online-Status und lastSeenAt) an alle Clients. */
     private void broadcastOnlineUsers() {
-        messagingTemplate.convertAndSend("/topic/presence/online", getOnlineUsers());
+        messagingTemplate.convertAndSend("/topic/presence/online", getAllUsersPresence());
     }
 
     /** Broadcastet die aktuelle Viewer-Liste für einen bestimmten Kunden. */
