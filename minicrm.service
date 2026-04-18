@@ -5,10 +5,9 @@ Requires=docker.service
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/minicrm
-EnvironmentFile=/home/pi/minicrm/.env
-ExecStartPre=/usr/bin/docker compose up -d
+User=simeon
+WorkingDirectory=/home/simeon/minicrm
+EnvironmentFile=/home/simeon/minicrm/.env
 ExecStart=/usr/bin/java -Xmx384m -Xms256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -jar minicrm.jar
 Restart=on-failure
 RestartSec=5

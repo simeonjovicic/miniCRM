@@ -105,7 +105,8 @@ export function useCrdt(
   useEffect(() => {
     const unsub = subscribe(
       `/topic/customers/${entityId}`,
-      (op: CrdtOperation) => {
+      (data: unknown) => {
+        const op = data as CrdtOperation;
         // Kunde wurde von einem anderen User gelöscht → UI zeigt Warnung
         if (op.type === "CUSTOMER_DELETED") {
           setDeleted(true);

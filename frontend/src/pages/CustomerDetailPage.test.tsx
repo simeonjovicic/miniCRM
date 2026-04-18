@@ -23,6 +23,7 @@ const mockCrdt: UseCrdtResult = {
   incrementCounter: vi.fn(),
   decrementCounter: vi.fn(),
   revision: 0,
+  deleted: false,
 };
 
 vi.mock("../hooks/useCrdt", () => ({

@@ -1,3 +1,4 @@
+com/collabcrm/service/StorageService$FileInfo.class
 com/collabcrm/controller/UserController.class
 com/collabcrm/service/CustomerService.class
 com/collabcrm/controller/AiController.class
@@ -14,6 +15,7 @@ com/collabcrm/service/CrdtSyncService$2.class
 com/collabcrm/crdt/ORSet$Dot.class
 com/collabcrm/dto/CrdtOperationDto$OrSetRemove.class
 com/collabcrm/controller/DashboardController.class
+com/collabcrm/service/TimeEntryService.class
 com/collabcrm/model/FinanceEntry.class
 com/collabcrm/crdt/LamportClock.class
 com/collabcrm/crdt/ORSet$Entry.class
@@ -24,18 +26,22 @@ com/collabcrm/dto/CrdtOperationDto$LwwUpdate.class
 com/collabcrm/crdt/LWWRegister.class
 com/collabcrm/repository/FinanceEntryRepository.class
 com/collabcrm/model/User.class
+com/collabcrm/repository/TimeEntryRepository.class
 com/collabcrm/repository/TodoRepository.class
 com/collabcrm/CollabCrmApplication.class
+com/collabcrm/controller/StorageController.class
 com/collabcrm/service/FinanceService.class
 com/collabcrm/config/WebSocketConfig.class
 com/collabcrm/crdt/ORSet.class
 com/collabcrm/service/CrdtSyncService.class
+com/collabcrm/model/TimeEntry.class
 com/collabcrm/controller/TodoController.class
 com/collabcrm/service/AiService.class
 com/collabcrm/repository/CustomerRepository.class
 com/collabcrm/service/CrdtSyncService$1.class
 com/collabcrm/repository/CrdtStateRepository.class
 com/collabcrm/service/UserService.class
+com/collabcrm/controller/TimeEntryController.class
 com/collabcrm/controller/FinanceController.class
 com/collabcrm/dto/CrdtOperationDto$PnCounterDecrement.class
 com/collabcrm/dto/CrdtOperationDto$OrSetAdd.class
@@ -45,5 +51,6 @@ com/collabcrm/model/Customer.class
 com/collabcrm/service/TodoService.class
 com/collabcrm/config/CorsConfig$1.class
 com/collabcrm/controller/CustomerController.class
+com/collabcrm/service/StorageService.class
 com/collabcrm/dto/CrdtOperationDto$PnCounterIncrement.class
 com/collabcrm/controller/AiController$EmailRequest.class

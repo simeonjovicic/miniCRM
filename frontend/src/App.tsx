@@ -211,8 +211,8 @@ function AppShell({
             </NavLink>
             <div className="flex items-center gap-1 rounded-full bg-bg p-1">
               {NAV_ITEMS.map((item) =>
-                "children" in item ? (
-                  <AnalyseDropdown key={item.label} item={item} />
+                "children" in item && item.children ? (
+                  <AnalyseDropdown key={item.label} item={item as { label: string; children: { to: string; label: string }[] }} />
                 ) : (
                   <NavLink
                     key={item.to}

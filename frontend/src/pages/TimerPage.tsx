@@ -297,9 +297,9 @@ export default function TimerPage({ user }: { user: User }) {
                 width={36}
               />
               <Tooltip
-                formatter={(value: number, name: string) => [
-                  `${value.toFixed(2)}h`,
-                  name,
+                formatter={(value, name) => [
+                  `${Number(value).toFixed(2)}h`,
+                  String(name),
                 ]}
                 contentStyle={{
                   background: "var(--color-card, #1c1c1e)",

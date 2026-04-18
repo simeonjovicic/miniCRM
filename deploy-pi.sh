@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PI_HOST="${1:-pi@100.120.87.43}"
+PI_HOST="${1:-dietpi@100.120.87.43}"
 PI_DIR="/home/pi/minicrm"
 
 echo "=== MiniCRM — Build & Deploy auf Pi ==="
