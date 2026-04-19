@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { customersApi, todosApi, financeApi, storageApi, type StorageFile } from "../services/api";
+import { customersApi, todosApi, financeApi, storageApi } from "../services/api";
 import type { Customer, TodoItem, FinanceEntry } from "../types";
 
 interface SearchResult {
