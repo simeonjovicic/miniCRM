@@ -1,14 +1,21 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { customersApi, todosApi, financeApi } from "../services/api";
+import { customersApi, todosApi, financeApi, storageApi, type StorageFile } from "../services/api";
 import type { Customer, TodoItem, FinanceEntry } from "../types";
 
 interface SearchResult {
-  type: "customer" | "todo" | "finance";
+  type: "customer" | "todo" | "finance" | "file";
   id: string;
   title: string;
   subtitle: string;
   path: string;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 export default function SearchModal({
@@ -46,6 +53,8 @@ export default function SearchModal({
 
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
+
+  const storageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(
     (q: string) => {
@@ -112,6 +121,34 @@ export default function SearchModal({
       }
 
       setResults(found.slice(0, 10));
+
+      // Debounced storage search (async, hits backend)
+      if (storageTimerRef.current) clearTimeout(storageTimerRef.current);
+      if (q.trim().length >= 2) {
+        storageTimerRef.current = setTimeout(() => {
+          storageApi.search(q.trim()).then((files) => {
+            const fileResults: SearchResult[] = files.map((f) => {
+              const parts = f.name.split("/");
+              const fileName = parts[parts.length - 1];
+              const folder = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+              return {
+                type: "file" as const,
+                id: f.name,
+                title: fileName,
+                subtitle: [
+                  f.directory ? "Ordner" : formatFileSize(f.size),
+                  folder ? `in ${folder}` : "Storage",
+                ].join(" · "),
+                path: "/storage",
+              };
+            });
+            setResults((prev) => [
+              ...prev.filter((r) => r.type !== "file"),
+              ...fileResults,
+            ].slice(0, 15));
+          }).catch(() => { /* ignore storage search errors */ });
+        }, 300);
+      }
     },
     [],
   );
@@ -142,6 +179,7 @@ export default function SearchModal({
     customer: { label: "Kunde", color: "bg-accent/10 text-accent" },
     todo: { label: "Todo", color: "bg-[#ff9f0a]/10 text-[#c77d08]" },
     finance: { label: "Finanzen", color: "bg-[#30d158]/10 text-[#1fa03f]" },
+    file: { label: "Datei", color: "bg-[#5856d6]/10 text-[#5856d6]" },
   };
 
   return (
@@ -175,7 +213,7 @@ export default function SearchModal({
               value={query}
               onChange={(e) => search(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Kunden, Todos, Finanzen suchen..."
+              placeholder="Kunden, Todos, Finanzen, Dateien suchen..."
               className="flex-1 bg-transparent text-sm text-text-bright outline-none placeholder:text-text-secondary"
             />
             <kbd className="glass-chip rounded-md px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">

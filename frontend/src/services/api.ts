@@ -166,6 +166,10 @@ export const storageApi = {
     request<StorageFile[]>(`/storage/files?path=${encodeURIComponent(path)}`),
   downloadUrl: (path: string) =>
     `${BASE}/storage/download?path=${encodeURIComponent(path)}`,
+  previewUrl: (path: string) =>
+    `${BASE}/storage/preview?path=${encodeURIComponent(path)}`,
+  search: (query: string) =>
+    request<StorageFile[]>(`/storage/search?q=${encodeURIComponent(query)}`),
   createFolder: (path: string, name: string) =>
     request<void>("/storage/folder", {
       method: "POST",

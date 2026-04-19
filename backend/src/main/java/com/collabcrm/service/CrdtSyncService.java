@@ -32,7 +32,7 @@ public class CrdtSyncService {
 
     private final LamportClock serverClock = new LamportClock();
 
-    private static final Set<String> CUSTOMER_JPA_FIELDS = Set.of("name", "email", "company", "phone", "status");
+    private static final Set<String> CUSTOMER_JPA_FIELDS = Set.of("name", "email", "company", "phone", "address", "status");
 
 
     private final Map<String, Object> crdtCache = new ConcurrentHashMap<>();
@@ -95,6 +95,7 @@ public class CrdtSyncService {
                     case "email" -> updates.setEmail(val);
                     case "company" -> updates.setCompany(val);
                     case "phone" -> updates.setPhone(val);
+                    case "address" -> updates.setAddress(val);
                     case "status" -> updates.setStatus(val);
                 }
                 customerService.update(UUID.fromString(op.getEntityId()), updates);

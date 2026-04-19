@@ -64,6 +64,11 @@ public class StorageController {
         storageService.delete(path, name);
     }
 
+    @GetMapping("/search")
+    public List<FileInfo> searchFiles(@RequestParam String q) throws IOException {
+        return storageService.searchFiles(q);
+    }
+
     @GetMapping("/download")
     public ResponseEntity<InputStreamResource> download(@RequestParam String path) throws IOException {
         InputStream is = storageService.downloadFile(path);
@@ -74,5 +79,40 @@ public class StorageController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(new InputStreamResource(is));
+    }
+
+    @GetMapping("/preview")
+    public ResponseEntity<InputStreamResource> preview(@RequestParam String path) throws IOException {
+        InputStream is = storageService.downloadFile(path);
+        String filename = path.contains("/") ? path.substring(path.lastIndexOf("/") + 1) : path;
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        MediaType mediaType = guessMediaType(filename);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encoded)
+                .contentType(mediaType)
+                .body(new InputStreamResource(is));
+    }
+
+    private MediaType guessMediaType(String filename) {
+        String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "";
+        return switch (ext) {
+            case "pdf" -> MediaType.APPLICATION_PDF;
+            case "jpg", "jpeg" -> MediaType.IMAGE_JPEG;
+            case "png" -> MediaType.IMAGE_PNG;
+            case "gif" -> MediaType.IMAGE_GIF;
+            case "svg" -> MediaType.parseMediaType("image/svg+xml");
+            case "webp" -> MediaType.parseMediaType("image/webp");
+            case "mp4" -> MediaType.parseMediaType("video/mp4");
+            case "webm" -> MediaType.parseMediaType("video/webm");
+            case "mp3" -> MediaType.parseMediaType("audio/mpeg");
+            case "wav" -> MediaType.parseMediaType("audio/wav");
+            case "ogg" -> MediaType.parseMediaType("audio/ogg");
+            case "json" -> MediaType.APPLICATION_JSON;
+            case "xml" -> MediaType.APPLICATION_XML;
+            case "html" -> MediaType.TEXT_HTML;
+            case "css", "js", "ts", "txt", "csv", "md", "yml", "yaml", "log", "sh" -> MediaType.TEXT_PLAIN;
+            default -> MediaType.APPLICATION_OCTET_STREAM;
+        };
     }
 }

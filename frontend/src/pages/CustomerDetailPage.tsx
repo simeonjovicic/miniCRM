@@ -5,7 +5,7 @@ import type { Customer } from "../types";
 import { useCrdt } from "../hooks/useCrdt";
 import CustomerStatusBadge from "../components/CustomerStatusBadge";
 import EditableField from "../components/EditableField";
-import TodoList from "../components/TodoList";
+import NotesList from "../components/NotesList";
 import ContactCounter from "../components/ContactCounter";
 import PresenceIndicator from "../components/PresenceIndicator";
 
@@ -121,6 +121,11 @@ export default function CustomerDetailPage({
             type="tel"
             onChange={(v) => crdt.setField("phone", v)}
           />
+          <EditableField
+            label="Adresse"
+            value={crdt.getField("address") || customer.address || ""}
+            onChange={(v) => crdt.setField("address", v)}
+          />
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">Status</label>
             <select
@@ -147,11 +152,11 @@ export default function CustomerDetailPage({
           />
         </div>
 
-        {/* Todo List */}
+        {/* Notizen */}
         <div className="mt-6 border-t border-white/40 pt-6">
-          <TodoList
-            todos={crdt.todos}
-            onAdd={(todo) => crdt.addTodo(todo)}
+          <NotesList
+            notes={crdt.todos}
+            onAdd={(note) => crdt.addTodo(note)}
             onRemove={(elemId) => crdt.removeTodo(elemId)}
           />
         </div>

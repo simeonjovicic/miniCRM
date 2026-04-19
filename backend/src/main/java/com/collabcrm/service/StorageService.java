@@ -162,6 +162,43 @@ public class StorageService {
         }
     }
 
+    public List<FileInfo> searchFiles(String query) throws IOException {
+        List<FileInfo> results = new ArrayList<>();
+        String lower = query.toLowerCase();
+        try (SMBClient client = new SMBClient();
+             Connection conn = client.connect(host);
+             Session session = conn.authenticate(new AuthenticationContext(username, password.toCharArray(), null));
+             DiskShare share = (DiskShare) session.connectShare(shareName)) {
+            searchRecursive(share, basePath, "", lower, results, 5, 50);
+        }
+        return results;
+    }
+
+    private void searchRecursive(DiskShare share, String fullPath, String relativePath,
+                                  String query, List<FileInfo> results, int maxDepth, int maxResults) {
+        if (maxDepth <= 0 || results.size() >= maxResults) return;
+        try {
+            for (FileIdBothDirectoryInformation info : share.list(fullPath)) {
+                if (results.size() >= maxResults) return;
+                String name = info.getFileName();
+                if (".".equals(name) || "..".equals(name)) continue;
+
+                boolean isDir = (info.getFileAttributes() & FileAttributes.FILE_ATTRIBUTE_DIRECTORY.getValue()) != 0;
+                String entryRelPath = relativePath.isEmpty() ? name : relativePath + "/" + name;
+
+                if (name.toLowerCase().contains(query)) {
+                    results.add(new FileInfo(entryRelPath, isDir, info.getEndOfFile(), info.getLastWriteTime().toEpochMillis()));
+                }
+
+                if (isDir) {
+                    searchRecursive(share, fullPath + "\\" + name, entryRelPath, query, results, maxDepth - 1, maxResults);
+                }
+            }
+        } catch (Exception ignored) {
+            // skip inaccessible directories
+        }
+    }
+
     private void validateName(String name) {
         if (name == null || name.isBlank() || name.contains("\\") || name.contains("/") || name.contains("..")) {
             throw new IllegalArgumentException("Invalid name: " + name);

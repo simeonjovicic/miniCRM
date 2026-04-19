@@ -12,6 +12,7 @@ export interface Customer {
   email: string | null;
   company: string | null;
   phone: string | null;
+  address: string | null;
   status: "LEAD" | "PROSPECT" | "CUSTOMER" | "CHURNED";
   createdBy: string;
   createdAt: string;

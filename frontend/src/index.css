@@ -42,54 +42,7 @@
   to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-@keyframes glass-materialize {
-  from {
-    opacity: 0;
-    transform: scale(0.93);
-    filter: blu(5px) saturate(0.4);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0px) saturate(1);
-  }
-}
 
-/* ── Page enter animation ──────────────────────────────────── */
-/* Each direct child of the page assembles in sequence */
-.page-enter > div > * {
-  animation: glass-materialize 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.page-enter > div > *:nth-child(1) { animation-delay:   0ms; }
-.page-enter > div > *:nth-child(2) { animation-delay:  65ms; }
-.page-enter > div > *:nth-child(3) { animation-delay: 130ms; }
-.page-enter > div > *:nth-child(4) { animation-delay: 195ms; }
-.page-enter > div > *:nth-child(5) { animation-delay: 260ms; }
-.page-enter > div > *:nth-child(6) { animation-delay: 325ms; }
-.page-enter > div > *:nth-child(7) { animation-delay: 390ms; }
-.page-enter > div > *:nth-child(8) { animation-delay: 455ms; }
-
-/* shooting stars — visible ~2s, invisible for the rest */
-@keyframes shoot-1 {
-  0%           { opacity: 0;   transform: translate(  0vw,  0vh) rotate(32deg); }
-  2%           { opacity: 1;   transform: translate(  0vw,  0vh) rotate(32deg); }
-  14%          { opacity: 0;   transform: translate( 75vw, 48vh) rotate(32deg); }
-  14.01%, 100% { opacity: 0;   transform: translate(  0vw,  0vh) rotate(32deg); }
-}
-
-@keyframes shoot-2 {
-  0%           { opacity: 0;   transform: translate(  0vw,  0vh) rotate(35deg); }
-  2%           { opacity: 1;   transform: translate(  0vw,  0vh) rotate(35deg); }
-  13%          { opacity: 0;   transform: translate( 65vw, 44vh) rotate(35deg); }
-  13.01%, 100% { opacity: 0;   transform: translate(  0vw,  0vh) rotate(35deg); }
-}
-
-@keyframes shoot-3 {
-  0%           { opacity: 0;   transform: translate(  0vw,  0vh) rotate(29deg); }
-  2%           { opacity: 1;   transform: translate(  0vw,  0vh) rotate(29deg); }
-  12%          { opacity: 0;   transform: translate( 55vw, 38vh) rotate(29deg); }
-  12.01%, 100% { opacity: 0;   transform: translate(  0vw,  0vh) rotate(29deg); }
-}
 
 /* ── Body — soft abstract mesh ─────────────────────────────── */
 body {
@@ -110,74 +63,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* shared star base */
-body::before, body::after, #root::before {
-  content: "";
-  position: fixed;
-  border-radius: 999px;
-  pointer-events: none;
-  z-index: 9999;
-}
-
-/* star 1 — fires on load */
-body::before {
-  top: 10vh;
-  left: 5vw;
-  width: 3px;
-  height: 160px;
-  background: linear-gradient(to bottom,
-    transparent 0%,
-    rgba(180, 210, 255, 0.5) 40%,
-    rgba(255, 255, 255, 1.0) 100%
-  );
-  box-shadow:
-    0 0 4px 1px rgba(255, 255, 255, 0.9),
-    0 0 10px 3px rgba(160, 200, 255, 0.7),
-    0 0 22px 6px rgba(120, 170, 255, 0.4);
-  animation: shoot-1 16s linear infinite;
-}
-
-/* star 2 — offset start */
-body::after {
-  top: 18vh;
-  left: 42vw;
-  width: 2px;
-  height: 130px;
-  background: linear-gradient(to bottom,
-    transparent 0%,
-    rgba(200, 220, 255, 0.45) 40%,
-    rgba(255, 255, 255, 0.95) 100%
-  );
-  box-shadow:
-    0 0 4px 1px rgba(255, 255, 255, 0.85),
-    0 0 10px 3px rgba(160, 200, 255, 0.60),
-    0 0 20px 5px rgba(120, 170, 255, 0.35);
-  animation: shoot-2 24s linear infinite;
-  animation-delay: -11s;
-}
 
 #root {
   min-height: 100svh;
 }
 
-/* star 3 — right side */
-#root::before {
-  top: 38vh;
-  left: 68vw;
-  width: 2px;
-  height: 110px;
-  background: linear-gradient(to bottom,
-    transparent 0%,
-    rgba(210, 225, 255, 0.40) 40%,
-    rgba(255, 255, 255, 0.90) 100%
-  );
-  box-shadow:
-    0 0 4px 1px rgba(255, 255, 255, 0.80),
-    0 0 8px 2px rgba(160, 200, 255, 0.55),
-    0 0 18px 5px rgba(120, 170, 255, 0.30);
-  animation: shoot-3 32s linear infinite;
-  animation-delay: -20s;
-}
 
 /* ── Glass utilities ───────────────────────────────────────── */
 

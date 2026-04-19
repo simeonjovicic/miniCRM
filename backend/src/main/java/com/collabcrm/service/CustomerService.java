@@ -47,6 +47,7 @@ public class CustomerService {
         if (updates.getEmail() != null) existing.setEmail(updates.getEmail());
         if (updates.getCompany() != null) existing.setCompany(updates.getCompany());
         if (updates.getPhone() != null) existing.setPhone(updates.getPhone());
+        if (updates.getAddress() != null) existing.setAddress(updates.getAddress());
         if (updates.getStatus() != null) existing.setStatus(updates.getStatus());
         return customerRepository.save(existing);
     }

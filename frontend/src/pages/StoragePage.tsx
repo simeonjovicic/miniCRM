@@ -1,11 +1,131 @@
 import { useEffect, useState, useRef } from "react";
 import { storageApi, type StorageFile } from "../services/api";
 
+function getFileType(name: string): "image" | "video" | "audio" | "pdf" | "text" | null {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return "image";
+  if (["mp4", "webm", "mov", "avi", "mkv"].includes(ext)) return "video";
+  if (["mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  if (["txt", "md", "json", "csv", "xml", "html", "css", "js", "ts", "tsx", "jsx", "py", "sh", "yml", "yaml", "toml", "ini", "cfg", "log", "env", "sql"].includes(ext)) return "text";
+  return null;
+}
+
+function FilePreviewModal({ file, path, onClose }: { file: StorageFile; path: string; onClose: () => void }) {
+  const filePath = path ? `${path}/${file.name}` : file.name;
+  const url = storageApi.previewUrl(filePath);
+  const downloadLink = storageApi.downloadUrl(filePath);
+  const type = getFileType(file.name);
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [textLoading, setTextLoading] = useState(false);
+
+  useEffect(() => {
+    if (type === "text") {
+      setTextLoading(true);
+      fetch(url)
+        .then((r) => r.text())
+        .then(setTextContent)
+        .catch(() => setTextContent("Fehler beim Laden der Datei."))
+        .finally(() => setTextLoading(false));
+    }
+  }, [url, type]);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape" || e.key === " ") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative z-10 flex flex-col items-center max-w-[90vw] max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="mb-3 flex items-center gap-3 glass rounded-xl px-4 py-2">
+          <span className="text-[13px] font-medium text-text-bright">{file.name}</span>
+          <a
+            href={downloadLink}
+            download
+            className="rounded-lg p-1 text-accent hover:bg-accent-light transition-all"
+            title="Download"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+          </a>
+          <button onClick={onClose} className="rounded-lg p-1 text-text-secondary hover:text-text-bright transition-all">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="glass rounded-2xl overflow-hidden">
+          {type === "image" && (
+            <img src={url} alt={file.name} className="max-w-[85vw] max-h-[75vh] object-contain" />
+          )}
+          {type === "video" && (
+            <video src={url} controls autoPlay className="max-w-[85vw] max-h-[75vh]" />
+          )}
+          {type === "audio" && (
+            <div className="px-8 py-6">
+              <audio src={url} controls autoPlay className="w-[400px]" />
+            </div>
+          )}
+          {type === "pdf" && (
+            <iframe src={url} className="w-[80vw] h-[75vh] bg-white" title={file.name} />
+          )}
+          {type === "text" && (
+            <div className="w-[70vw] max-h-[75vh] overflow-auto p-5">
+              {textLoading ? (
+                <span className="text-[13px] text-text-secondary">Laden...</span>
+              ) : (
+                <pre className="text-[12px] text-text-bright whitespace-pre-wrap break-words font-mono leading-relaxed">
+                  {textContent}
+                </pre>
+              )}
+            </div>
+          )}
+          {!type && (
+            <div className="px-8 py-12 text-center">
+              <p className="text-[13px] text-text-secondary mb-3">Vorschau nicht verfuegbar</p>
+              <a
+                href={downloadLink}
+                download
+                className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[13px] font-medium text-white"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Herunterladen
+              </a>
+            </div>
+          )}
+        </div>
+
+        <p className="mt-2 text-[11px] text-text-secondary">Leertaste oder Esc zum Schliessen</p>
+      </div>
+    </div>
+  );
+}
+
 export default function StoragePage() {
   const [files, setFiles] = useState<StorageFile[]>([]);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Preview
+  const [previewFile, setPreviewFile] = useState<StorageFile | null>(null);
 
   // New folder
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -318,10 +438,13 @@ export default function StoragePage() {
                           {file.name}
                         </button>
                       ) : (
-                        <span className="flex items-center gap-2.5 text-[13px] text-text-bright">
+                        <button
+                          onClick={() => setPreviewFile(file)}
+                          className="flex items-center gap-2.5 text-[13px] text-text-bright hover:text-accent transition-colors cursor-pointer"
+                        >
                           {fileIcon(file)}
                           {file.name}
-                        </span>
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-[13px] text-text-secondary">
@@ -342,6 +465,19 @@ export default function StoragePage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
                           </svg>
                         </button>
+                        {/* Preview (files only) */}
+                        {!file.directory && (
+                          <button
+                            onClick={() => setPreviewFile(file)}
+                            title="Vorschau"
+                            className="rounded-lg p-1.5 text-text-secondary hover:bg-border/50 hover:text-text-bright transition-all"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
+                        )}
                         {/* Download (files only) */}
                         {!file.directory && (
                           <a
@@ -375,6 +511,15 @@ export default function StoragePage() {
           </table>
         )}
       </div>
+
+      {/* Quick Look preview modal */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          path={path}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   );
 }

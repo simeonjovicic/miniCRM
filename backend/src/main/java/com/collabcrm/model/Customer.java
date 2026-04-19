@@ -32,6 +32,8 @@ public class Customer extends AbstractPersistable<UUID> {
 
     private String phone;
 
+    private String address;
+
     /** Kunden-Status in der Sales-Pipeline: LEAD → PROSPECT → CUSTOMER → CHURNED */
     @Column(nullable = false)
     private String status;
@@ -66,6 +68,9 @@ public class Customer extends AbstractPersistable<UUID> {
 
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
