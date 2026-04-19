@@ -263,7 +263,7 @@ function AppShell({
       <TimerWidget />
 
       <main className="mx-auto max-w-6xl px-6 py-6">
-        <div>
+        <div key={location.pathname} className="page-enter">
           <Routes>
             <Route path="/" element={<DashboardPage user={user} />} />
             <Route

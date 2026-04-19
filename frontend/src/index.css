@@ -173,3 +173,29 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(130, 150, 200, 0.5);
 }
+
+/* ── Page entrance animation ───────────────────────────────── */
+@keyframes glass-materialize {
+  from {
+    opacity: 0;
+    transform: scale(0.75);
+    filter: blur(7px) saturate(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px) saturate(1);
+  }
+}
+
+.page-enter > div > * {
+  animation: glass-materialize 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.page-enter > div > *:nth-child(1) { animation-delay:   0ms; }
+.page-enter > div > *:nth-child(2) { animation-delay:  65ms; }
+.page-enter > div > *:nth-child(3) { animation-delay: 130ms; }
+.page-enter > div > *:nth-child(4) { animation-delay: 195ms; }
+.page-enter > div > *:nth-child(5) { animation-delay: 260ms; }
+.page-enter > div > *:nth-child(6) { animation-delay: 325ms; }
+.page-enter > div > *:nth-child(7) { animation-delay: 390ms; }
+.page-enter > div > *:nth-child(8) { animation-delay: 455ms; }
