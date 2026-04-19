@@ -229,7 +229,7 @@ export function useCrdt(
     (value: unknown) => {
       const clock = clockRef.current;
       const ts = clock.tick();
-      const elemId = crypto.randomUUID();
+      const elemId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       // Lokal hinzufügen (Optimistic UI)
       stateRef.current.todos.add(elemId, value, nodeId, ts);

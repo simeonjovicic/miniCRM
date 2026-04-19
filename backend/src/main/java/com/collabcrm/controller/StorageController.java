@@ -58,6 +58,14 @@ public class StorageController {
         storageService.uploadFile(path, file.getOriginalFilename(), file.getInputStream());
     }
 
+    @PostMapping("/upload/batch")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void uploadBatch(
+            @RequestParam(defaultValue = "") String path,
+            @RequestParam("files") MultipartFile[] files) throws IOException {
+        storageService.uploadFiles(path, files);
+    }
+
     @DeleteMapping("/delete")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@RequestParam String path, @RequestParam String name) throws IOException {

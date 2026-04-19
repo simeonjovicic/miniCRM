@@ -140,6 +140,8 @@ export default function StoragePage() {
   // Upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadFileCount, setUploadFileCount] = useState(0);
 
   function reload() {
     setLoading(true);
@@ -213,16 +215,20 @@ export default function StoragePage() {
     const selectedFiles = e.target.files;
     if (!selectedFiles?.length) return;
     setUploading(true);
+    setUploadProgress(0);
+    setUploadFileCount(selectedFiles.length);
     setError("");
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        await storageApi.upload(path, selectedFiles[i]);
-      }
+      await storageApi.uploadBatch(path, selectedFiles, (percent) => {
+        setUploadProgress(percent);
+      });
       reload();
     } catch (err: any) {
       setError(err.message);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -511,6 +517,40 @@ export default function StoragePage() {
           </table>
         )}
       </div>
+
+      {/* Upload progress overlay */}
+      {uploading && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 w-[380px] -translate-x-1/2 glass-strong rounded-2xl px-5 py-4"
+          style={{ animation: "glass-in 0.35s cubic-bezier(0.22,1,0.36,1) both" }}
+        >
+          <div className="mb-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-accent animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span className="text-[13px] font-medium text-text-bright">
+                {uploadFileCount === 1
+                  ? "Datei wird hochgeladen"
+                  : `${uploadFileCount} Dateien werden hochgeladen`}
+              </span>
+            </div>
+            <span className="text-[12px] font-medium text-accent tabular-nums">
+              {Math.round(uploadProgress * 100)}%
+            </span>
+          </div>
+          <div className="h-[5px] overflow-hidden rounded-full bg-white/40">
+            <div
+              className="h-full rounded-full transition-[width] duration-300 ease-out"
+              style={{
+                width: `${Math.max(uploadProgress * 100, 2)}%`,
+                background: "linear-gradient(160deg, #1a8fff 0%, #007aff 50%, #0063d6 100%)",
+                boxShadow: "0 0 12px rgba(0, 122, 255, 0.4)",
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Quick Look preview modal */}
       {previewFile && (

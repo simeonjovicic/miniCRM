@@ -147,6 +147,31 @@ public class StorageService {
         }
     }
 
+    public void uploadFiles(String relativePath, org.springframework.web.multipart.MultipartFile[] files) throws IOException {
+        String parentPath = buildPath(relativePath);
+        try (SMBClient client = new SMBClient();
+             Connection conn = client.connect(host);
+             Session session = conn.authenticate(new AuthenticationContext(username, password.toCharArray(), null));
+             DiskShare share = (DiskShare) session.connectShare(shareName)) {
+
+            for (org.springframework.web.multipart.MultipartFile mf : files) {
+                String fileName = mf.getOriginalFilename();
+                validateName(fileName);
+                String fullPath = parentPath + "\\" + fileName;
+                try (File file = share.openFile(
+                        fullPath,
+                        EnumSet.of(AccessMask.GENERIC_WRITE),
+                        EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                        EnumSet.of(SMB2ShareAccess.FILE_SHARE_WRITE),
+                        SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                        EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE));
+                     OutputStream os = file.getOutputStream()) {
+                    mf.getInputStream().transferTo(os);
+                }
+            }
+        }
+    }
+
     public void delete(String relativePath, String name) throws IOException {
         String parentPath = buildPath(relativePath);
         String fullPath = parentPath + "\\" + name;

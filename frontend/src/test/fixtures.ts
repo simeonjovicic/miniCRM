@@ -23,6 +23,7 @@ export const testCustomer: Customer = {
   company: "Acme",
   phone: "+49 123 456",
   status: "LEAD",
+  address: null,
   createdBy: "u-1",
   createdAt: "2025-03-01T00:00:00Z",
 };
@@ -34,6 +35,7 @@ export const testCustomer2: Customer = {
   company: "Globex",
   phone: null,
   status: "CUSTOMER",
+  address: null,
   createdBy: "u-1",
   createdAt: "2025-03-02T00:00:00Z",
 };

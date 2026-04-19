@@ -194,6 +194,34 @@ export const storageApi = {
     );
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   },
+  uploadBatch: (
+    path: string,
+    files: FileList,
+    onProgress?: (percent: number) => void,
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        form.append("files", files[i]);
+      }
+      const xhr = new XMLHttpRequest();
+      xhr.open(
+        "POST",
+        `${BASE}/storage/upload/batch?path=${encodeURIComponent(path)}`,
+      );
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(e.loaded / e.total);
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`${xhr.status} ${xhr.statusText}`));
+      };
+      xhr.onerror = () => reject(new Error("Upload fehlgeschlagen"));
+      xhr.send(form);
+    });
+  },
 };
 
 export const financeApi = {
