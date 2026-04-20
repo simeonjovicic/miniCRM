@@ -191,7 +191,7 @@ export default function TodosPage({ user }: { user: User }) {
       </div>
 
       {/* Apple-style input bar with autocomplete */}
-      <form onSubmit={handleAdd} className="relative mb-6">
+      <form onSubmit={handleAdd} className="relative z-10 mb-6">
         <input
           ref={inputRef}
           value={input}
@@ -485,8 +485,8 @@ function TodoDetail({
   }
 
   return (
-    <div className="ml-11 mr-4 mb-2 glass rounded-xl p-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="ml-4 mr-2 mb-2 glass rounded-xl p-3 sm:ml-11 sm:mr-4 sm:p-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="col-span-2">
           <label className="mb-1 block text-xs font-medium text-text-secondary">Titel</label>
           <input

@@ -56,12 +56,12 @@ export default function CustomerListPage({ user }: { user: User }) {
 
       {showCreate && (
         <form onSubmit={handleCreate} className="glass mb-6 rounded-2xl p-5">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name *" required className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
             <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Firma" className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
             <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" type="email" className="glass-input rounded-xl px-3 py-2.5 text-sm text-text-bright" />
           </div>
-          <button type="submit" className="btn-shimmer mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] transition-all">
+          <button type="submit" className="btn-shimmer mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] transition-all sm:w-auto">
             Erstellen
           </button>
         </form>
@@ -79,7 +79,9 @@ export default function CustomerListPage({ user }: { user: User }) {
       ) : filtered.length === 0 ? (
         <p className="text-sm text-text-secondary">Keine Kunden gefunden.</p>
       ) : (
-        <div className="glass overflow-hidden rounded-2xl">
+        <>
+        {/* Desktop table */}
+        <div className="glass overflow-hidden rounded-2xl hidden sm:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/40 text-xs uppercase tracking-wider text-text-secondary">
@@ -105,6 +107,28 @@ export default function CustomerListPage({ user }: { user: User }) {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile card list */}
+        <div className="space-y-2 sm:hidden">
+          {filtered.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => navigate(`/customers/${c.id}`)}
+              className="glass flex w-full items-center justify-between rounded-2xl px-4 py-3.5 text-left active:scale-[0.98] transition-all"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-text-bright truncate">{c.name}</p>
+                <p className="mt-0.5 text-xs text-text-secondary truncate">
+                  {[c.company, c.email].filter(Boolean).join(" · ") || "—"}
+                </p>
+              </div>
+              <div className="ml-3 shrink-0">
+                <CustomerStatusBadge status={c.status} />
+              </div>
+            </button>
+          ))}
+        </div>
+        </>
       )}
     </div>
   );

@@ -199,3 +199,30 @@ body {
 .page-enter > div > *:nth-child(6) { animation-delay: 325ms; }
 .page-enter > div > *:nth-child(7) { animation-delay: 390ms; }
 .page-enter > div > *:nth-child(8) { animation-delay: 455ms; }
+
+/* ── Mobile-specific ─────────────────────────────────────── */
+
+/* iOS safe area bottom padding */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Slide-up animation for bottom sheet */
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Mobile tab bar glass — slightly more opaque for readability */
+.mobile-tab-bar {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+}
+
+/* Timer widget — move above tab bar on mobile */
+@media (max-width: 767px) {
+  .fixed.bottom-6.right-6 {
+    bottom: 5rem !important;
+  }
+}

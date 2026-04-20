@@ -285,20 +285,20 @@ function AiChat() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 lg:gap-6">
       {/* Sidebar — Quick templates + tone */}
       <div className="space-y-4 lg:col-span-1">
-        {/* Tone selector */}
+        {/* Tone selector — horizontal pills on mobile, vertical list on desktop */}
         <div className="glass rounded-2xl p-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary">
             Ton
           </h3>
-          <div className="space-y-1">
+          <div className="flex flex-wrap gap-1.5 lg:flex-col lg:gap-1 lg:space-y-0">
             {TONES.map((t) => (
               <button
                 key={t.value}
                 onClick={() => setTone(t.value)}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                className={`rounded-lg px-3 py-2 text-left text-sm transition-all lg:w-full ${
                   tone === t.value
                     ? "bg-accent text-white font-medium"
                     : "text-text-bright hover:bg-white/40"
@@ -310,21 +310,21 @@ function AiChat() {
           </div>
         </div>
 
-        {/* Quick templates */}
+        {/* Quick templates — horizontal scroll on mobile, vertical list on desktop */}
         <div className="glass rounded-2xl p-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary">
             Schnellvorlagen
           </h3>
-          <div className="space-y-1">
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
             {TEMPLATES.map((t) => (
               <button
                 key={t.id}
                 onClick={() => useTemplate(t)}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-text-bright transition-all hover:bg-white/40"
+                className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-bright transition-all hover:bg-white/40 lg:w-full lg:justify-between lg:shrink"
               >
-                <span>{t.name}</span>
+                <span className="whitespace-nowrap">{t.name}</span>
                 <span
-                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium whitespace-nowrap ${
                     CATEGORY_COLORS[t.category] ?? "bg-bg text-text-secondary"
                   }`}
                 >
@@ -338,7 +338,7 @@ function AiChat() {
 
       {/* Chat area */}
       <div className="flex flex-col lg:col-span-3">
-        <div className="glass flex min-h-125 flex-col rounded-2xl">
+        <div className="glass flex min-h-80 flex-col rounded-2xl lg:min-h-125">
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto p-5">
             {messages.length === 0 ? (

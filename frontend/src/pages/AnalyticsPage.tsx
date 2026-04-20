@@ -88,14 +88,14 @@ export default function AnalyticsPage() {
       <h1 className="mb-6 text-xl font-bold text-text-bright">Analyse</h1>
 
       {/* KPI Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:mb-8 sm:gap-4 sm:grid-cols-4">
         <KpiCard label="Gesamt" value={total} />
         <KpiCard label="Conversion-Rate" value={`${conversionRate}%`} sub="Lead → Kunde/Churned" />
         <KpiCard label="Churn-Rate" value={`${churnRate}%`} color="text-[#ff453a]" />
         <KpiCard label="Retention" value={`${retentionRate}%`} color="text-[#30d158]" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
         {/* Status Distribution */}
         <div className="glass rounded-2xl p-5">
           <h2 className="mb-4 text-sm font-semibold text-text-bright">Status-Verteilung</h2>
@@ -204,10 +204,10 @@ function KpiCard({
   color?: string;
 }) {
   return (
-    <div className="glass rounded-2xl p-4">
-      <p className="text-xs font-medium text-text-secondary">{label}</p>
-      <p className={`mt-1 font-mono text-2xl font-bold ${color}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-text-secondary">{sub}</p>}
+    <div className="glass rounded-2xl p-3 sm:p-4">
+      <p className="text-[10px] font-medium text-text-secondary sm:text-xs">{label}</p>
+      <p className={`mt-1 font-mono text-lg font-bold sm:text-2xl ${color}`}>{value}</p>
+      {sub && <p className="mt-0.5 text-[10px] text-text-secondary hidden sm:block">{sub}</p>}
     </div>
   );
 }

@@ -58,15 +58,15 @@ export default function DashboardPage({ user }: { user: User }) {
     <div>
       <h1 className="mb-6 text-xl font-bold text-text-bright">Dashboard</h1>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:mb-8 sm:gap-4 sm:grid-cols-4">
         <StatCard label="Kunden gesamt" value={stats.totalCustomers} />
         <StatCard label="Leads" value={stats.leads} color="text-[#c77d08]" />
         <StatCard label="Prospects" value={stats.prospects} color="text-[#1a8fc4]" />
         <StatCard label="Aktive Kunden" value={stats.activeCustomers} color="text-[#1fa03f]" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="glass col-span-2 rounded-2xl p-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:gap-6">
+        <div className="glass lg:col-span-2 rounded-2xl p-4 sm:p-5">
           <h2 className="mb-4 text-sm font-semibold text-text-bright">Zuletzt erstellt</h2>
           {stats.recentCustomers.length === 0 ? (
             <p className="text-xs text-text-secondary">Keine Kunden vorhanden.</p>
@@ -140,9 +140,9 @@ export default function DashboardPage({ user }: { user: User }) {
 
 function StatCard({ label, value, color = "text-text-bright" }: { label: string; value: number; color?: string }) {
   return (
-    <div className="glass rounded-2xl p-4">
-      <p className="text-xs font-medium text-text-secondary">{label}</p>
-      <p className={`mt-1 font-mono text-2xl font-bold ${color}`}>{value}</p>
+    <div className="glass rounded-2xl p-3 sm:p-4">
+      <p className="text-[10px] font-medium text-text-secondary sm:text-xs">{label}</p>
+      <p className={`mt-1 font-mono text-xl font-bold sm:text-2xl ${color}`}>{value}</p>
     </div>
   );
 }

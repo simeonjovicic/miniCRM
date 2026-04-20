@@ -75,7 +75,7 @@ export default function CustomerDetailPage({
         &larr; Zurück zur Liste
       </button>
 
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-4 sm:p-6">
         {/* Presence */}
         {id && (
           <div className="mb-4">
@@ -84,9 +84,9 @@ export default function CustomerDetailPage({
         )}
 
         {/* Header */}
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-text-bright">
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-text-bright sm:text-2xl truncate">
               {displayName}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
@@ -94,11 +94,13 @@ export default function CustomerDetailPage({
               {new Date(customer.createdAt).toLocaleDateString("de-DE")}
             </p>
           </div>
-          <CustomerStatusBadge status={displayStatus} />
+          <div className="shrink-0">
+            <CustomerStatusBadge status={displayStatus} />
+          </div>
         </div>
 
         {/* Editable Fields */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <EditableField
             label="Name"
             value={crdt.getField("name") || customer.name}

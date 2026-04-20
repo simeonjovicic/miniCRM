@@ -221,7 +221,7 @@ export default function TimerPage({ user }: { user: User }) {
       <h1 className="mb-6 text-xl font-bold text-text-bright">Zeiterfassung</h1>
 
       {/* Stat cards */}
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      <div className="mb-6 grid grid-cols-3 gap-2 sm:gap-3">
         <StatCard label="Heute" value={formatDuration(todaySecs)} />
         <StatCard label="Diese Woche" value={formatDuration(weekSecs)} />
         <StatCard label="Dieser Monat" value={formatDuration(monthSecs)} />
@@ -372,9 +372,9 @@ export default function TimerPage({ user }: { user: User }) {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="glass rounded-xl p-4">
-      <p className="mb-1 text-xs text-text-secondary">{label}</p>
-      <p className="text-2xl font-bold tabular-nums text-text-bright">{value}</p>
+    <div className="glass rounded-xl p-3 sm:p-4">
+      <p className="mb-1 text-[10px] text-text-secondary sm:text-xs">{label}</p>
+      <p className="text-lg font-bold tabular-nums text-text-bright sm:text-2xl">{value}</p>
     </div>
   );
 }
@@ -403,23 +403,23 @@ function EntryRow({
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-xl px-4 py-2.5 hover:bg-white/40 transition-colors">
+    <li className="group flex items-center gap-2 rounded-xl px-3 py-2.5 hover:bg-white/40 transition-colors sm:gap-3 sm:px-4">
       {/* User color bar */}
       <span
         className="h-8 w-1 shrink-0 rounded-full"
         style={{ background: color }}
       />
 
-      {/* Time range */}
-      <span className="w-28 shrink-0 font-mono text-[11px] text-text-secondary">
-        {formatTime(entry.startedAt)}
-        {entry.stoppedAt && ` – ${formatTime(entry.stoppedAt)}`}
-      </span>
-
-      {/* Duration */}
-      <span className="w-14 shrink-0 text-xs font-semibold text-text-bright tabular-nums">
-        {entry.durationSeconds ? formatDuration(entry.durationSeconds) : "—"}
-      </span>
+      {/* Mobile: stacked time+duration, Desktop: side by side */}
+      <div className="shrink-0 sm:flex sm:items-center sm:gap-3">
+        <span className="block font-mono text-[11px] text-text-secondary sm:w-28">
+          {formatTime(entry.startedAt)}
+          {entry.stoppedAt && ` – ${formatTime(entry.stoppedAt)}`}
+        </span>
+        <span className="block text-xs font-semibold text-text-bright tabular-nums sm:w-14">
+          {entry.durationSeconds ? formatDuration(entry.durationSeconds) : "—"}
+        </span>
+      </div>
 
       {/* Description (editable) */}
       <div className="min-w-0 flex-1">
@@ -435,7 +435,7 @@ function EntryRow({
         ) : (
           <button
             onClick={() => isOwner && setEditing(true)}
-            className={`text-left text-sm ${
+            className={`text-left text-sm truncate max-w-full ${
               desc ? "text-text-bright" : "text-text-secondary italic"
             } ${isOwner ? "hover:text-accent" : ""}`}
           >
@@ -447,7 +447,7 @@ function EntryRow({
       {/* User badge (multi-user mode) */}
       {showUser && (
         <span
-          className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
+          className="hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium text-white sm:inline"
           style={{ background: color }}
         >
           {entry.username ?? "?"}
@@ -458,7 +458,7 @@ function EntryRow({
       {isOwner && (
         <button
           onClick={onDelete}
-          className="shrink-0 text-text-secondary opacity-0 transition-all group-hover:opacity-100 hover:text-[#ff453a]"
+          className="shrink-0 text-text-secondary opacity-100 sm:opacity-0 transition-all group-hover:opacity-100 hover:text-[#ff453a]"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

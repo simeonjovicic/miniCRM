@@ -273,14 +273,14 @@ export default function StoragePage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-[22px] font-bold text-text-bright">Storage</h1>
-          <p className="mt-0.5 text-[13px] text-text-secondary">
+          <p className="mt-0.5 text-[13px] text-text-secondary hidden sm:block">
             Dateien auf dem Server
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Upload button */}
           <input
             ref={fileInputRef}
@@ -292,12 +292,12 @@ export default function StoragePage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="btn-shimmer flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-50 transition-all"
+            className="btn-shimmer flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50 transition-all sm:px-3.5"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
             </svg>
-            {uploading ? "Uploading..." : "Upload"}
+            <span className="hidden sm:inline">{uploading ? "Uploading..." : "Upload"}</span>
           </button>
           {/* New folder button */}
           <button
@@ -305,12 +305,12 @@ export default function StoragePage() {
               setShowNewFolder(true);
               setNewFolderName("");
             }}
-            className="glass flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-medium text-text-bright transition-all hover:bg-white/70"
+            className="glass flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium text-text-bright transition-all hover:bg-white/70 sm:px-3.5"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
             </svg>
-            Neuer Ordner
+            <span className="hidden sm:inline">Neuer Ordner</span>
           </button>
         </div>
       </div>
@@ -354,8 +354,34 @@ export default function StoragePage() {
         </div>
       )}
 
-      {/* File list */}
-      <div className="glass rounded-2xl overflow-hidden">
+      {/* New folder inline (mobile-friendly) */}
+      {showNewFolder && (
+        <div className="glass mb-4 rounded-2xl p-4 sm:hidden">
+          <div className="flex items-center gap-2">
+            <svg className="h-5 w-5 text-accent shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+            <input
+              ref={newFolderRef}
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Escape") setShowNewFolder(false);
+              }}
+              placeholder="Ordnername..."
+              className="glass-input flex-1 rounded-lg px-2.5 py-1.5 text-[13px] text-text-bright outline-none"
+            />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button onClick={handleCreateFolder} className="flex-1 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-white">Erstellen</button>
+            <button onClick={() => setShowNewFolder(false)} className="flex-1 rounded-lg px-3 py-1.5 text-[12px] font-medium text-text-secondary">Abbrechen</button>
+          </div>
+        </div>
+      )}
+
+      {/* File list — Desktop table */}
+      <div className="glass rounded-2xl overflow-hidden hidden sm:block">
         {loading ? (
           <div className="p-8 text-center text-[13px] text-text-secondary">
             Laden...
@@ -515,6 +541,62 @@ export default function StoragePage() {
               )}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* File list — Mobile card list */}
+      <div className="sm:hidden">
+        {loading ? (
+          <div className="glass rounded-2xl p-8 text-center text-[13px] text-text-secondary">Laden...</div>
+        ) : files.length === 0 ? (
+          <div className="glass rounded-2xl p-8 text-center text-[13px] text-text-secondary">Keine Dateien vorhanden</div>
+        ) : (
+          <div className="space-y-1.5">
+            {files.map((file) => (
+              <div
+                key={file.name}
+                className="glass flex items-center gap-3 rounded-2xl px-4 py-3"
+              >
+                {/* File info — tappable */}
+                <button
+                  onClick={() => file.directory ? navigateTo(file.name) : setPreviewFile(file)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  {fileIcon(file)}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium text-text-bright truncate">{file.name}</p>
+                    <p className="text-[11px] text-text-secondary">
+                      {file.directory ? "Ordner" : formatSize(file.size)}
+                    </p>
+                  </div>
+                </button>
+
+                {/* Actions — always visible on mobile */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {!file.directory && (
+                    <a
+                      href={storageApi.downloadUrl(path ? `${path}/${file.name}` : file.name)}
+                      title="Download"
+                      className="rounded-lg p-2 text-accent"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                    </a>
+                  )}
+                  <button
+                    onClick={() => handleDelete(file)}
+                    title="Loeschen"
+                    className="rounded-lg p-2 text-text-secondary"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
