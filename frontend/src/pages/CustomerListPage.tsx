@@ -32,7 +32,10 @@ export default function CustomerListPage({ user }: { user: User }) {
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.company?.toLowerCase().includes(search.toLowerCase()) ?? false),
-  );
+  ).sort((a, b) => {
+    const p: Record<string, number> = { CUSTOMER: 1, PROSPECT: 2, LEAD: 3, CHURNED: 4 };
+    return (p[a.status] || 5) - (p[b.status] || 5);
+  });
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
