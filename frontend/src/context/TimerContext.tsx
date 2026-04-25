@@ -14,6 +14,7 @@ interface TimerContextValue {
   elapsed: number;       // net seconds (excludes paused time)
   paused: boolean;
   start: (description?: string) => Promise<void>;
+  startTogether: (partners: { userId: string; username: string }[], description?: string) => Promise<void>;
   stop: () => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -81,6 +82,17 @@ export function TimerProvider({ user, children }: { user: User; children: React.
     setElapsed(0);
   }, [user.id, user.username]);
 
+  const startTogether = useCallback(async (partners: { userId: string; username: string }[], description = "") => {
+    pausedSecsRef.current = 0;
+    pausedAtRef.current = null;
+    setPaused(false);
+    const participants = [{ userId: user.id, username: user.username }, ...partners];
+    const entries = await timeEntriesApi.startTogether(participants, description);
+    const myEntry = entries.find((e) => e.userId === user.id) ?? entries[0];
+    setActiveEntry(myEntry);
+    setElapsed(0);
+  }, [user.id, user.username]);
+
   const pause = useCallback(() => {
     if (!activeEntry || paused) return;
     pausedAtRef.current = Date.now();
@@ -122,7 +134,7 @@ export function TimerProvider({ user, children }: { user: User; children: React.
   }, [activeEntry]);
 
   return (
-    <TimerContext.Provider value={{ activeEntry, elapsed, paused, start, stop, pause, resume, updateDescription }}>
+    <TimerContext.Provider value={{ activeEntry, elapsed, paused, start, startTogether, stop, pause, resume, updateDescription }}>
       {children}
     </TimerContext.Provider>
   );

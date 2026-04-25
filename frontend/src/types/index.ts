@@ -51,4 +51,5 @@ export interface TimeEntry {
   durationSeconds: number | null;
   customerId: string | null;
   todoId: string | null;
+  sessionGroupId: string | null;
 }

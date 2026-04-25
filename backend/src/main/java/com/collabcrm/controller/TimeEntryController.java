@@ -70,4 +70,23 @@ public class TimeEntryController {
         service.delete(id);
         messaging.convertAndSend("/topic/time-entries", Map.of("type", "DELETED"));
     }
+
+    @PostMapping("/start-together")
+    @ResponseStatus(HttpStatus.CREATED)
+    @SuppressWarnings("unchecked")
+    public List<TimeEntry> startTogether(@RequestBody Map<String, Object> body) {
+        List<Map<String, String>> participants = (List<Map<String, String>>) body.get("participants");
+        String description = (String) body.getOrDefault("description", "");
+        List<TimeEntry> entries = service.startTogether(participants, description);
+        messaging.convertAndSend("/topic/time-entries", Map.of("type", "TOGETHER_STARTED"));
+        return entries;
+    }
+
+    @PostMapping("/{id}/link-together")
+    public List<TimeEntry> linkTogether(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        UUID targetId = UUID.fromString(body.get("targetId"));
+        List<TimeEntry> entries = service.linkTogether(id, targetId);
+        messaging.convertAndSend("/topic/time-entries", Map.of("type", "LINKED"));
+        return entries;
+    }
 }

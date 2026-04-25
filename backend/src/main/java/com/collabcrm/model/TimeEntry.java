@@ -32,6 +32,10 @@ public class TimeEntry extends AbstractPersistable<UUID> {
     /** optional link to a todo */
     private UUID todoId;
 
+    /** groups entries that were tracked together */
+    @Column(name = "session_group_id")
+    private UUID sessionGroupId;
+
     @PrePersist
     void prePersist() {
         if (startedAt == null) startedAt = Instant.now();
@@ -60,4 +64,7 @@ public class TimeEntry extends AbstractPersistable<UUID> {
 
     public UUID getTodoId() { return todoId; }
     public void setTodoId(UUID todoId) { this.todoId = todoId; }
+
+    public UUID getSessionGroupId() { return sessionGroupId; }
+    public void setSessionGroupId(UUID sessionGroupId) { this.sessionGroupId = sessionGroupId; }
 }

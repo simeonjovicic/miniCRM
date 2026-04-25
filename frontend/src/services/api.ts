@@ -149,6 +149,16 @@ export const timeEntriesApi = {
     }),
   delete: (id: string) =>
     request<void>(`/time-entries/${id}`, { method: "DELETE" }),
+  startTogether: (participants: { userId: string; username: string }[], description = "") =>
+    request<TimeEntry[]>("/time-entries/start-together", {
+      method: "POST",
+      body: JSON.stringify({ participants, description }),
+    }),
+  linkTogether: (id: string, targetId: string) =>
+    request<TimeEntry[]>(`/time-entries/${id}/link-together`, {
+      method: "POST",
+      body: JSON.stringify({ targetId }),
+    }),
 };
 
 // =====================================================
