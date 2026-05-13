@@ -8,11 +8,13 @@ import {
 } from "react";
 import type { TimeEntry, User } from "../types";
 import { timeEntriesApi } from "../services/api";
+import { subscribe } from "../services/websocket";
 
 interface TimerContextValue {
   activeEntry: TimeEntry | null;
   elapsed: number;       // net seconds (excludes paused time)
   paused: boolean;
+  currentUserId: string;
   start: (description?: string) => Promise<void>;
   startTogether: (partners: { userId: string; username: string }[], description?: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -32,6 +34,8 @@ export function TimerProvider({ user, children }: { user: User; children: React.
   const pausedSecsRef = useRef(0);   // total seconds spent paused
   const pausedAtRef = useRef<number | null>(null); // timestamp when current pause started
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeEntryRef = useRef<TimeEntry | null>(null);
+  useEffect(() => { activeEntryRef.current = activeEntry; }, [activeEntry]);
 
   // On mount: resume any running entry
   useEffect(() => {
@@ -42,6 +46,31 @@ export function TimerProvider({ user, children }: { user: User; children: React.
         setElapsed(secs);
       }
     });
+  }, [user.id]);
+
+  // Pick up sessions started for us by other users (group track) — stable subscription
+  useEffect(() => {
+    function refresh() {
+      timeEntriesApi.getActive(user.id).then((entry) => {
+        const current = activeEntryRef.current;
+        if (entry && (!current || current.id !== entry.id)) {
+          pausedSecsRef.current = 0;
+          pausedAtRef.current = null;
+          setPaused(false);
+          setActiveEntry(entry);
+          const secs = Math.floor((Date.now() - new Date(entry.startedAt).getTime()) / 1000);
+          setElapsed(secs);
+        } else if (!entry && current) {
+          setActiveEntry(null);
+          setElapsed(0);
+        }
+      });
+    }
+    const unsub = subscribe("/topic/time-entries", () => {
+      // small delay so the DB txn that triggered the broadcast is visible
+      setTimeout(refresh, 150);
+    });
+    return unsub;
   }, [user.id]);
 
   // Tick while running (not paused) — compute from wall clock, not counter
@@ -134,7 +163,7 @@ export function TimerProvider({ user, children }: { user: User; children: React.
   }, [activeEntry]);
 
   return (
-    <TimerContext.Provider value={{ activeEntry, elapsed, paused, start, startTogether, stop, pause, resume, updateDescription }}>
+    <TimerContext.Provider value={{ activeEntry, elapsed, paused, currentUserId: user.id, start, startTogether, stop, pause, resume, updateDescription }}>
       {children}
     </TimerContext.Provider>
   );

@@ -43,6 +43,41 @@ export default function FinancePage({ user }: { user: User }) {
     financeApi.stats().then(setStats);
   }
 
+  const canEdit = (entry: FinanceEntry) =>
+    user.role === "ADMIN" || entry.createdBy === user.id;
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editType, setEditType] = useState<"INCOME" | "EXPENSE">("INCOME");
+  const [editDesc, setEditDesc] = useState("");
+  const [editDate, setEditDate] = useState("");
+
+  function startEdit(entry: FinanceEntry) {
+    setEditingId(entry.id);
+    setEditAmount(String(entry.amount));
+    setEditType(entry.type);
+    setEditDesc(entry.description);
+    setEditDate(entry.date.slice(0, 10));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function saveEdit(id: string) {
+    const parsed = parseFloat(editAmount);
+    if (!parsed || parsed <= 0 || !editDesc.trim()) return;
+    const updated = await financeApi.update(id, {
+      amount: parsed,
+      type: editType,
+      description: editDesc.trim(),
+      date: editDate,
+    });
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
+    setEditingId(null);
+    financeApi.stats().then(setStats);
+  }
+
   if (loading) return <p className="text-sm text-text-secondary">Lade Finanzen...</p>;
 
   return (
@@ -150,26 +185,70 @@ export default function FinancePage({ user }: { user: User }) {
                 <tbody>
                   {entries.map((entry) => (
                     <tr key={entry.id} className="border-b border-white/30 last:border-0 transition-colors hover:bg-white/40">
-                      <td className="px-5 py-3.5 font-mono text-xs text-text-secondary">{new Date(entry.date).toLocaleDateString("de-DE")}</td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${entry.type === "INCOME" ? "bg-status-customer/10 text-status-customer" : "bg-status-churned/10 text-status-churned"}`}>
-                          {entry.type === "INCOME" ? "Einnahme" : "Ausgabe"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-text-bright">{entry.description}</td>
-                      <td className="px-5 py-3.5 text-xs text-text-secondary">{entry.createdByUsername ?? "—"}</td>
-                      <td className={`px-5 py-3.5 text-right font-mono ${entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"}`}>
-                        {entry.type === "EXPENSE" ? "−" : "+"}{formatCurrency(entry.amount)}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        {entry.createdBy === user.id && (
-                          <button onClick={() => handleDelete(entry.id)} title="Löschen" className="rounded-lg p-1.5 text-text-secondary hover:bg-status-churned/10 hover:text-status-churned transition-all">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                            </svg>
-                          </button>
-                        )}
-                      </td>
+                      {editingId === entry.id ? (
+                        <>
+                          <td className="px-5 py-2.5">
+                            <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="glass-input rounded-lg px-2 py-1 text-xs text-text-bright w-full" />
+                          </td>
+                          <td className="px-5 py-2.5">
+                            <select value={editType} onChange={(e) => setEditType(e.target.value as "INCOME" | "EXPENSE")} className="glass-input rounded-lg px-2 py-1 text-xs text-text-bright">
+                              <option value="INCOME">Einnahme</option>
+                              <option value="EXPENSE">Ausgabe</option>
+                            </select>
+                          </td>
+                          <td className="px-5 py-2.5">
+                            <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="glass-input rounded-lg px-2 py-1 text-sm text-text-bright w-full" />
+                          </td>
+                          <td className="px-5 py-2.5 text-xs text-text-secondary">{entry.createdByUsername ?? "—"}</td>
+                          <td className="px-5 py-2.5 text-right">
+                            <input type="number" step="0.01" min="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="glass-input rounded-lg px-2 py-1 text-xs text-text-bright w-24 text-right font-mono" />
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => saveEdit(entry.id)} title="Speichern" className="rounded-lg p-1.5 text-status-customer hover:bg-status-customer/10 transition-all">
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button onClick={cancelEdit} title="Abbrechen" className="rounded-lg p-1.5 text-text-secondary hover:bg-white/40 transition-all">
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-5 py-3.5 font-mono text-xs text-text-secondary">{new Date(entry.date).toLocaleDateString("de-DE")}</td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${entry.type === "INCOME" ? "bg-status-customer/10 text-status-customer" : "bg-status-churned/10 text-status-churned"}`}>
+                              {entry.type === "INCOME" ? "Einnahme" : "Ausgabe"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-text-bright">{entry.description}</td>
+                          <td className="px-5 py-3.5 text-xs text-text-secondary">{entry.createdByUsername ?? "—"}</td>
+                          <td className={`px-5 py-3.5 text-right font-mono ${entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"}`}>
+                            {entry.type === "EXPENSE" ? "−" : "+"}{formatCurrency(entry.amount)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            {canEdit(entry) && (
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => startEdit(entry)} title="Bearbeiten" className="rounded-lg p-1.5 text-text-secondary hover:bg-accent/10 hover:text-accent transition-all">
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                                  </svg>
+                                </button>
+                                <button onClick={() => handleDelete(entry.id)} title="Löschen" className="rounded-lg p-1.5 text-text-secondary hover:bg-status-churned/10 hover:text-status-churned transition-all">
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -179,27 +258,54 @@ export default function FinancePage({ user }: { user: User }) {
             {/* Mobile card list */}
             <div className="space-y-2 sm:hidden">
               {entries.map((entry) => (
-                <div key={entry.id} className="flex items-center gap-3 rounded-xl bg-white/40 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${entry.type === "INCOME" ? "bg-status-customer/10 text-status-customer" : "bg-status-churned/10 text-status-churned"}`}>
-                        {entry.type === "INCOME" ? "Einnahme" : "Ausgabe"}
-                      </span>
-                      <span className="font-mono text-[11px] text-text-secondary">{new Date(entry.date).toLocaleDateString("de-DE")}</span>
+                <div key={entry.id} className="rounded-xl bg-white/40 px-4 py-3">
+                  {editingId === entry.id ? (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <select value={editType} onChange={(e) => setEditType(e.target.value as "INCOME" | "EXPENSE")} className="glass-input rounded-lg px-2 py-1.5 text-xs text-text-bright flex-1">
+                          <option value="INCOME">Einnahme</option>
+                          <option value="EXPENSE">Ausgabe</option>
+                        </select>
+                        <input type="number" step="0.01" min="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="glass-input rounded-lg px-2 py-1.5 text-xs text-text-bright w-24 text-right font-mono" />
+                      </div>
+                      <input type="text" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="glass-input rounded-lg px-2 py-1.5 text-sm text-text-bright w-full" />
+                      <div className="flex gap-2">
+                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="glass-input rounded-lg px-2 py-1.5 text-xs text-text-bright flex-1" />
+                        <button onClick={() => saveEdit(entry.id)} className="rounded-lg bg-status-customer px-3 py-1.5 text-xs font-semibold text-white">Speichern</button>
+                        <button onClick={cancelEdit} className="rounded-lg bg-white/60 px-3 py-1.5 text-xs font-semibold text-text-secondary">Abbrechen</button>
+                      </div>
                     </div>
-                    <p className="text-sm text-text-bright truncate">{entry.description}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className={`font-mono text-sm font-semibold ${entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"}`}>
-                      {entry.type === "EXPENSE" ? "−" : "+"}{formatCurrency(entry.amount)}
-                    </p>
-                  </div>
-                  {entry.createdBy === user.id && (
-                    <button onClick={() => handleDelete(entry.id)} title="Löschen" className="shrink-0 rounded-lg p-1.5 text-text-secondary hover:text-status-churned transition-all">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${entry.type === "INCOME" ? "bg-status-customer/10 text-status-customer" : "bg-status-churned/10 text-status-churned"}`}>
+                            {entry.type === "INCOME" ? "Einnahme" : "Ausgabe"}
+                          </span>
+                          <span className="font-mono text-[11px] text-text-secondary">{new Date(entry.date).toLocaleDateString("de-DE")}</span>
+                        </div>
+                        <p className="text-sm text-text-bright truncate">{entry.description}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={`font-mono text-sm font-semibold ${entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"}`}>
+                          {entry.type === "EXPENSE" ? "−" : "+"}{formatCurrency(entry.amount)}
+                        </p>
+                      </div>
+                      {canEdit(entry) && (
+                        <div className="shrink-0 flex items-center gap-0.5">
+                          <button onClick={() => startEdit(entry)} title="Bearbeiten" className="rounded-lg p-1.5 text-text-secondary hover:text-accent transition-all">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleDelete(entry.id)} title="Löschen" className="rounded-lg p-1.5 text-text-secondary hover:text-status-churned transition-all">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

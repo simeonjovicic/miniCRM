@@ -41,6 +41,14 @@ public class FinanceController {
         return created;
     }
 
+    @PutMapping("/{id}")
+    public FinanceEntry update(@PathVariable UUID id, @Valid @RequestBody FinanceEntry entry) {
+        FinanceEntry updated = financeService.update(id, entry);
+        messagingTemplate.convertAndSend("/topic/finance",
+                Map.of("type", "FINANCE_UPDATED", "entityId", updated.getId().toString()));
+        return updated;
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {

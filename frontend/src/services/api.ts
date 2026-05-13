@@ -132,6 +132,7 @@ export const timeEntriesApi = {
   list: () => request<TimeEntry[]>("/time-entries"),
   getActive: (userId: string) =>
     request<TimeEntry | null>(`/time-entries/active/${userId}`).catch(() => null),
+  listActive: () => request<TimeEntry[]>("/time-entries/active"),
   start: (userId: string, username: string, description: string) =>
     request<TimeEntry>("/time-entries/start", {
       method: "POST",
@@ -239,6 +240,11 @@ export const financeApi = {
   create: (entry: Partial<FinanceEntry>) =>
     request<FinanceEntry>("/finance", {
       method: "POST",
+      body: JSON.stringify(entry),
+    }),
+  update: (id: string, entry: Partial<FinanceEntry>) =>
+    request<FinanceEntry>(`/finance/${id}`, {
+      method: "PUT",
       body: JSON.stringify(entry),
     }),
   delete: (id: string) =>

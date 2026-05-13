@@ -31,6 +31,16 @@ public class FinanceService {
         return repository.save(entry);
     }
 
+    public FinanceEntry update(UUID id, FinanceEntry data) {
+        FinanceEntry entry = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("FinanceEntry not found: " + id));
+        if (data.getAmount() != null) entry.setAmount(data.getAmount());
+        if (data.getType() != null) entry.setType(data.getType());
+        if (data.getDescription() != null) entry.setDescription(data.getDescription());
+        if (data.getDate() != null) entry.setDate(data.getDate());
+        return repository.save(entry);
+    }
+
     public void delete(UUID id) {
         repository.deleteById(id);
     }

@@ -30,6 +30,10 @@ public class TimeEntryService {
         return repository.findByUserIdAndStoppedAtIsNull(userId);
     }
 
+    public List<TimeEntry> findAllActive() {
+        return repository.findByStoppedAtIsNull();
+    }
+
     public TimeEntry start(UUID userId, String username, String description) {
         // Stop any existing active entry for this user before starting a new one
         repository.findByUserIdAndStoppedAtIsNull(userId).ifPresent(active -> {

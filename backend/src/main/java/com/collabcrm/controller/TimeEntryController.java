@@ -35,6 +35,11 @@ public class TimeEntryController {
                 .orElse(ResponseEntity.noContent().build());
     }
 
+    @GetMapping("/active")
+    public List<TimeEntry> getAllActive() {
+        return service.findAllActive();
+    }
+
     @PostMapping("/start")
     @ResponseStatus(HttpStatus.CREATED)
     public TimeEntry start(@RequestBody Map<String, String> body) {

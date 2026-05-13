@@ -13,4 +13,7 @@ public interface TimeEntryRepository extends JpaRepository<TimeEntry, UUID> {
 
     /** Find an active (running) entry for a specific user */
     Optional<TimeEntry> findByUserIdAndStoppedAtIsNull(UUID userId);
+
+    /** All running entries across all users */
+    List<TimeEntry> findByStoppedAtIsNull();
 }

@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useTimer } from "../context/TimerContext";
-import { usersApi } from "../services/api";
-import type { User } from "../types";
+import { usersApi, timeEntriesApi } from "../services/api";
+import { subscribe } from "../services/websocket";
+import type { TimeEntry, User } from "../types";
 
 function fmt(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -12,7 +13,7 @@ function fmt(secs: number): string {
 }
 
 export default function TimerWidget() {
-  const { activeEntry, elapsed, paused, start, startTogether, stop, pause, resume, updateDescription } = useTimer();
+  const { activeEntry, elapsed, paused, currentUserId, start, startTogether, stop, pause, resume, updateDescription } = useTimer();
   const [editingDesc, setEditingDesc] = useState(false);
   const [desc, setDesc] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -21,7 +22,41 @@ export default function TimerWidget() {
   const [togetherOpen, setTogetherOpen] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedPartners, setSelectedPartners] = useState<string[]>([]);
+  const [includeSelf, setIncludeSelf] = useState(true);
+  const [togetherDesc, setTogetherDesc] = useState("");
   const togetherRef = useRef<HTMLDivElement>(null);
+
+  // Other users' active sessions (so initiator can stop them)
+  const [othersActive, setOthersActive] = useState<TimeEntry[]>([]);
+  const [othersExpanded, setOthersExpanded] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  const reloadOthersActive = useCallback(() => {
+    timeEntriesApi.listActive().then((entries) => {
+      setOthersActive(entries.filter((e) => e.userId !== currentUserId));
+    });
+  }, [currentUserId]);
+
+  useEffect(() => {
+    reloadOthersActive();
+    const unsub = subscribe("/topic/time-entries", () => reloadOthersActive());
+    return unsub;
+  }, [reloadOthersActive]);
+
+  // 1-second tick so durations of others' sessions update live
+  useEffect(() => {
+    if (othersActive.length === 0) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [othersActive.length]);
+
+  async function stopOther(id: string) {
+    const entry = othersActive.find((e) => e.id === id);
+    if (!entry) return;
+    const secs = Math.max(0, Math.floor((Date.now() - new Date(entry.startedAt).getTime()) / 1000));
+    await timeEntriesApi.stop(id, secs);
+    setOthersActive((prev) => prev.filter((e) => e.id !== id));
+  }
 
   useEffect(() => {
     setDesc(activeEntry?.description ?? "");
@@ -53,8 +88,10 @@ export default function TimerWidget() {
   async function openTogether() {
     if (!togetherOpen) {
       const users = await usersApi.list();
-      setAllUsers(users);
+      setAllUsers(users.filter((u) => u.id !== currentUserId));
       setSelectedPartners([]);
+      setIncludeSelf(true);
+      setTogetherDesc("");
     }
     setTogetherOpen((v) => !v);
   }
@@ -64,7 +101,13 @@ export default function TimerWidget() {
       .filter((u) => selectedPartners.includes(u.id))
       .map((u) => ({ userId: u.id, username: u.username }));
     setTogetherOpen(false);
-    await startTogether(partners, desc);
+    if (includeSelf) {
+      await startTogether(partners, togetherDesc);
+    } else {
+      // Start session for others only — don't track for self
+      await timeEntriesApi.startTogether(partners, togetherDesc);
+    }
+    setTogetherDesc("");
   }
 
   function togglePartner(id: string) {
@@ -73,21 +116,97 @@ export default function TimerWidget() {
     );
   }
 
+  // Live duration for an "other" entry — recomputes each tick
+  function liveDuration(entry: TimeEntry): string {
+    void tick;
+    const secs = Math.max(0, Math.floor((Date.now() - new Date(entry.startedAt).getTime()) / 1000));
+    return fmt(secs);
+  }
+
+  const othersActivePanel = othersActive.length > 0 && (
+    <div className="glass rounded-2xl shadow-lg overflow-hidden w-64">
+      <button
+        type="button"
+        onClick={() => setOthersExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 hover:bg-white/30 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-status-customer opacity-60 animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-status-customer" />
+          </span>
+          <span className="text-xs font-semibold text-text-bright">
+            {othersActive.length} {othersActive.length === 1 ? "Session" : "Sessions"} laufen
+          </span>
+        </span>
+        <svg className={`h-3 w-3 text-text-secondary transition-transform ${othersExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {othersExpanded && (
+        <ul className="border-t border-white/40 max-h-64 overflow-y-auto">
+          {othersActive.map((e) => (
+            <li key={e.id} className="flex items-center gap-2 px-3 py-2 border-b border-white/30 last:border-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-text-bright truncate">
+                  {e.username ?? "?"}
+                </p>
+                <p className="text-[11px] text-text-secondary truncate">
+                  {e.description || <span className="italic">Keine Beschreibung</span>}
+                </p>
+              </div>
+              <span className="shrink-0 font-mono text-[11px] font-semibold text-status-customer tabular-nums">
+                {liveDuration(e)}
+              </span>
+              <button
+                onClick={() => stopOther(e.id)}
+                title="Stoppen"
+                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full text-text-secondary hover:bg-status-churned/10 hover:text-status-churned transition-all"
+              >
+                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
   // ── Idle ─────────────────────────────────────────────────────
   if (!activeEntry) {
     return (
       <div ref={togetherRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        {othersActivePanel}
         {/* Together picker panel */}
         {togetherOpen && (
-          <div className="glass-strong rounded-2xl p-4 shadow-xl w-56">
+          <div className="glass-strong rounded-2xl p-4 shadow-xl w-64">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Bezeichnung
+            </p>
+            <input
+              type="text"
+              value={togetherDesc}
+              onChange={(e) => setTogetherDesc(e.target.value)}
+              placeholder="Woran wird gearbeitet?"
+              className="glass-input mb-3 w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none"
+            />
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
               Mit wem?
             </p>
             <div className="space-y-1 mb-3">
+              {allUsers.length === 0 && (
+                <p className="px-2 py-1.5 text-xs italic text-text-secondary">
+                  Keine anderen Mitglieder verfügbar.
+                </p>
+              )}
               {allUsers.map((u) => (
-                <label
+                <button
+                  type="button"
                   key={u.id}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-white/40 transition-colors"
+                  onClick={() => togglePartner(u.id)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-white/40 transition-colors"
                 >
                   <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${
                     selectedPartners.includes(u.id)
@@ -101,15 +220,31 @@ export default function TimerWidget() {
                     )}
                   </div>
                   <span className="text-sm text-text-bright">{u.username}</span>
-                </label>
+                </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => setIncludeSelf((v) => !v)}
+              className="flex w-full items-center gap-2 px-2 py-1.5 mb-2 rounded-lg cursor-pointer hover:bg-white/40 transition-colors"
+            >
+              <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${
+                includeSelf ? "border-accent bg-accent" : "border-border-strong bg-transparent"
+              }`}>
+                {includeSelf && (
+                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className="text-xs text-text-secondary">Mich einbeziehen</span>
+            </button>
             <button
               disabled={selectedPartners.length === 0}
               onClick={handleStartTogether}
               className="w-full rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-all hover:bg-accent-dim active:scale-95"
             >
-              Zusammen starten
+              {includeSelf ? "Zusammen starten" : "Für andere starten"}
             </button>
           </div>
         )}
@@ -162,6 +297,7 @@ export default function TimerWidget() {
   // ── Running or Paused ─────────────────────────────────────────
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+      {othersActivePanel}
       {/* Together indicator */}
       {activeEntry.sessionGroupId && (
         <div className="glass flex items-center gap-1.5 rounded-full px-3 py-1 shadow-md">
