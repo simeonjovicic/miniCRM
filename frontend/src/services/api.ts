@@ -1,4 +1,13 @@
-import type { User, Customer, TodoItem, FinanceEntry, TimeEntry } from "../types";
+import type {
+  User,
+  Customer,
+  TodoItem,
+  FinanceEntry,
+  TimeEntry,
+  LeadFinderTermExpansion,
+  LeadFinderRun,
+  LeadFinderRunSummary,
+} from "../types";
 
 /** Basis-URL für alle API-Aufrufe. In Produktion gleicher Origin, in Dev per Vite Proxy. */
 const BASE = "/api";
@@ -123,6 +132,24 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify({ message, tone, history }),
     }),
+};
+
+// =====================================================
+// Lead Finder API — eigene Tabellen, getrennt vom CRM
+// =====================================================
+export const leadFinderApi = {
+  expandTerms: (keyword: string) =>
+    request<LeadFinderTermExpansion>("/lead-finder/terms", {
+      method: "POST",
+      body: JSON.stringify({ keyword }),
+    }),
+  startRun: (keyword: string, city: string, terms: string[]) =>
+    request<LeadFinderRun>("/lead-finder/runs", {
+      method: "POST",
+      body: JSON.stringify({ keyword, city, terms }),
+    }),
+  recentRuns: () => request<LeadFinderRunSummary[]>("/lead-finder/runs"),
+  getRun: (id: string) => request<LeadFinderRun>(`/lead-finder/runs/${id}`),
 };
 
 // =====================================================

@@ -19,6 +19,7 @@ import VorlagenPage from "./pages/VorlagenPage";
 import TimerPage from "./pages/TimerPage";
 import StoragePage from "./pages/StoragePage";
 import InvoicesPage from "./pages/InvoicesPage";
+import LeadFinderPage from "./pages/LeadFinderPage";
 import SyncStatusBadge from "./components/SyncStatusBadge";
 import TimerWidget from "./components/TimerWidget";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
     ],
   },
   { to: "/vorlagen", label: "Vorlagen" },
+  { to: "/lead-finder", label: "Lead Finder" },
   { to: "/rechnungen", label: "Rechnungen" },
   { to: "/storage", label: "Storage" },
 ];
@@ -86,7 +88,7 @@ const MOBILE_TABS = [
   {
     to: "/more",
     label: "Mehr",
-    match: ["/vorlagen", "/rechnungen", "/storage"],
+    match: ["/vorlagen", "/lead-finder", "/rechnungen", "/storage"],
     icon: (
       <svg className="h-[22px] w-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
@@ -235,6 +237,7 @@ function MobileMoreSheet({
     { to: "/finance", label: "Finanzen", icon: "💰" },
     { to: "/timer", label: "Zeiten", icon: "⏱" },
     { to: "/vorlagen", label: "Vorlagen", icon: "✉️" },
+    { to: "/lead-finder", label: "Lead Finder", icon: "⌕" },
     { to: "/rechnungen", label: "Rechnungen", icon: "🧾" },
     { to: "/storage", label: "Storage", icon: "📁" },
   ];
@@ -508,6 +511,7 @@ function AppShell({
             <Route path="/finance" element={<FinancePage user={user} />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/vorlagen" element={<VorlagenPage />} />
+            <Route path="/lead-finder" element={<LeadFinderPage />} />
             <Route path="/rechnungen" element={<InvoicesPage />} />
             <Route path="/timer" element={<TimerPage user={user} />} />
             <Route path="/storage" element={<StoragePage />} />

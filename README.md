@@ -39,6 +39,7 @@ cp .env.example .env
 | Variable | Description |
 |----------|-------------|
 | `GROQ_API_KEY` | Groq API key for the AI email assistant (optional) |
+| `GOOGLE_PLACES_API_KEY` | Google Places API key for the Lead Finder (optional, required to run searches) |
 | `SMB_USERNAME` | Samba username for the file browser (optional) |
 | `SMB_PASSWORD` | Samba password for the file browser (optional) |
 

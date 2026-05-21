@@ -53,3 +53,53 @@ export interface TimeEntry {
   todoId: string | null;
   sessionGroupId: string | null;
 }
+
+export interface LeadFinderTermExpansion {
+  keyword: string;
+  terms: string[];
+  cached: boolean;
+}
+
+export type LeadFinderRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface LeadFinderRunSummary {
+  id: string;
+  keyword: string;
+  city: string;
+  scope: string;
+  status: LeadFinderRunStatus;
+  keptResults: number;
+  completedSearches: number;
+  totalSearches: number;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface LeadFinderResult {
+  id: string;
+  googlePlaceId: string;
+  businessName: string;
+  formattedAddress: string | null;
+  phone: string | null;
+  googleMapsUri: string | null;
+  businessStatus: string | null;
+  primaryType: string | null;
+  types: string | null;
+  matchedTerms: string | null;
+  reviewCount: number;
+  city: string;
+  district: string;
+  fetchedAt: string;
+  snapshotExpiresAt: string | null;
+}
+
+export interface LeadFinderRun extends LeadFinderRunSummary {
+  approvedTerms: string[];
+  progressPercent: number;
+  droppedClosed: number;
+  droppedWithWebsite: number;
+  duplicateResults: number;
+  errorMessage: string | null;
+  startedAt: string | null;
+  results: LeadFinderResult[];
+}

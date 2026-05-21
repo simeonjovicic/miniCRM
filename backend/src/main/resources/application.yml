@@ -35,6 +35,11 @@ server:
 groq:
   api-key: ${GROQ_API_KEY:}
 
+google:
+  places:
+    api-key: ${GOOGLE_PLACES_API_KEY:}
+    max-pages-per-search: ${GOOGLE_PLACES_MAX_PAGES_PER_SEARCH:1}
+
 smb:
   host: ${SMB_HOST:100.120.87.43}
   share: ${SMB_SHARE:Storage}
