@@ -4,9 +4,6 @@ import type {
   TodoItem,
   FinanceEntry,
   TimeEntry,
-  LeadFinderTermExpansion,
-  LeadFinderRun,
-  LeadFinderRunSummary,
 } from "../types";
 
 /** Basis-URL für alle API-Aufrufe. In Produktion gleicher Origin, in Dev per Vite Proxy. */
@@ -112,45 +109,6 @@ export interface FinanceStats {
   profit: number;
   perUser: { username: string; income: number; expense: number; profit: number }[];
 }
-
-// =====================================================
-// AI API — KI-E-Mail-Assistent (Groq / Llama 3.3 70B)
-// =====================================================
-export const aiApi = {
-  /**
-   * Generiert eine E-Mail mit KI.
-   * Sendet die User-Nachricht, den gewünschten Ton und den bisherigen Chatverlauf.
-   * Das Backend reichert den Prompt automatisch mit CRM-Kontext an
-   * (erwähnte Kunden, Todos, Finanzeinträge).
-   */
-  generateEmail: (
-    message: string,
-    tone: string,
-    history: { role: string; content: string }[],
-  ) =>
-    request<{ content: string }>("/ai/generate-email", {
-      method: "POST",
-      body: JSON.stringify({ message, tone, history }),
-    }),
-};
-
-// =====================================================
-// Lead Finder API — eigene Tabellen, getrennt vom CRM
-// =====================================================
-export const leadFinderApi = {
-  expandTerms: (keyword: string) =>
-    request<LeadFinderTermExpansion>("/lead-finder/terms", {
-      method: "POST",
-      body: JSON.stringify({ keyword }),
-    }),
-  startRun: (keyword: string, city: string, terms: string[]) =>
-    request<LeadFinderRun>("/lead-finder/runs", {
-      method: "POST",
-      body: JSON.stringify({ keyword, city, terms }),
-    }),
-  recentRuns: () => request<LeadFinderRunSummary[]>("/lead-finder/runs"),
-  getRun: (id: string) => request<LeadFinderRun>(`/lead-finder/runs/${id}`),
-};
 
 // =====================================================
 // Time Entries API — Zeiterfassung

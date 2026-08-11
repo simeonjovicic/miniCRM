@@ -101,14 +101,16 @@ describe("CustomerDetailPage", () => {
     );
   });
 
-  it("renders the todo section", async () => {
+  it("renders the notes section", async () => {
     ({ restore } = mockFetch({ "/customers/c-1": testCustomer }));
     renderWithRouter(<CustomerDetailPage userId="u-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText("Todos")).toBeInTheDocument(),
+      expect(screen.getByText("Notizen")).toBeInTheDocument(),
     );
-    expect(screen.getByPlaceholderText("Neues Todo...")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(/notiz hinzufuegen/i),
+    ).toBeInTheDocument();
   });
 
   it("renders the contact counter section", async () => {

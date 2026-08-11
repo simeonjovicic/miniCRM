@@ -38,12 +38,10 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `GROQ_API_KEY` | Groq API key for the AI email assistant (optional) |
-| `GOOGLE_PLACES_API_KEY` | Google Places API key for the Lead Finder (optional, required to run searches) |
 | `SMB_USERNAME` | Samba username for the file browser (optional) |
 | `SMB_PASSWORD` | Samba password for the file browser (optional) |
 
-The app runs fine without these — AI and file browser features will simply be unavailable.
+The app runs fine without these — the file browser will simply be unavailable.
 
 ---
 
@@ -169,6 +167,7 @@ miniCRM/
 │       ├── pages/            # Route-level page components
 │       ├── services/         # API client + WebSocket service
 │       └── types/            # Shared TypeScript types
+├── archive/                  # Stillgelegte Features — nicht im Build (siehe archive/README.md)
 ├── docker-compose.yml        # PostgreSQL for local dev + Pi
 ├── deploy-pi.sh              # One-command build & deploy script
 └── minicrm.service           # systemd unit file
@@ -181,7 +180,6 @@ miniCRM/
 - **Real-time collaboration** via STOMP/WebSocket — edits sync across all open tabs instantly
 - **CRDT conflict resolution** — Last-Write-Wins registers, OR-Sets, and PN-Counters for offline-safe merges
 - **Mitglieder panel** — Shows all team members with live online status (pulsing green dot) and "last seen" timestamp for offline members
-- **AI email assistant** — Powered by Groq / Llama 3.3 70B, context-aware of your CRM data
 - **Time tracking** — Per-user timer with customer/todo linking
 - **File browser** — Samba (SMB) network share integration
 - **Finance tracker** — Income/expense entries with per-user breakdown

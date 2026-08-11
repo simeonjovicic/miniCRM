@@ -22,7 +22,7 @@ public class SpaConfig implements WebMvcConfigurer {
 
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
-        // Ein-Segment-Pfade: /customers, /todos, /finance, /vorlagen etc.
+        // Ein-Segment-Pfade: /customers, /todos, /finance, /rechnungen etc.
         registry.addViewController("/{path:[^\\.]*}")
                 .setViewName("forward:/index.html");
         // Zwei-Segment-Pfade: /customers/abc-123 (Kunden-Detailseite)

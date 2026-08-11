@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CustomerListPage from "./CustomerListPage";
 import { renderWithRouter, mockFetch } from "../test/helpers";
@@ -13,6 +13,18 @@ vi.mock("../services/websocket", () => ({
   getOfflineQueueSize: () => 0,
 }));
 
+/**
+ * Die Seite rendert beide Layouts gleichzeitig ins DOM: die Desktop-Tabelle
+ * (`hidden sm:block`) und die Mobile-Kartenliste (`sm:hidden`). Getrennt werden
+ * sie nur per CSS — und jsdom wendet kein Tailwind an. Deshalb kommt jeder
+ * Kundenname zweimal vor und Queries müssen auf ein Layout eingegrenzt werden:
+ *   Desktop → innerhalb der <table>
+ *   Mobile  → die Karte ist ein <button> mit dem Namen als Accessible Name
+ */
+const desktopRows = () => within(screen.getByRole("table"));
+const mobileCard = (name: string | RegExp) =>
+  screen.getByRole("button", { name });
+
 describe("CustomerListPage", () => {
   let restore: () => void;
 
@@ -23,9 +35,20 @@ describe("CustomerListPage", () => {
     renderWithRouter(<CustomerListPage user={testUser} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Acme Corp")).toBeInTheDocument();
-      expect(screen.getByText("Globex Inc")).toBeInTheDocument();
+      expect(desktopRows().getByText("Acme Corp")).toBeInTheDocument();
+      expect(desktopRows().getByText("Globex Inc")).toBeInTheDocument();
     });
+  });
+
+  it("renders each customer in both the desktop table and the mobile list", async () => {
+    ({ restore } = mockFetch({ "/customers": [testCustomer] }));
+    renderWithRouter(<CustomerListPage user={testUser} />);
+
+    await waitFor(() =>
+      expect(desktopRows().getByText("Acme Corp")).toBeInTheDocument(),
+    );
+    expect(mobileCard(/Acme Corp/)).toBeInTheDocument();
+    expect(screen.getAllByText("Acme Corp")).toHaveLength(2);
   });
 
   it("shows empty state when no customers", async () => {
@@ -41,15 +64,18 @@ describe("CustomerListPage", () => {
     ({ restore } = mockFetch({ "/customers": [testCustomer, testCustomer2] }));
     renderWithRouter(<CustomerListPage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByText("Acme Corp")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(desktopRows().getByText("Acme Corp")).toBeInTheDocument(),
+    );
 
     await userEvent.type(
       screen.getByPlaceholderText(/suche/i),
       "Globex",
     );
 
+    // Aus beiden Layouts verschwunden
     expect(screen.queryByText("Acme Corp")).not.toBeInTheDocument();
-    expect(screen.getByText("Globex Inc")).toBeInTheDocument();
+    expect(desktopRows().getByText("Globex Inc")).toBeInTheDocument();
   });
 
   it("shows status badges with correct text", async () => {
@@ -57,8 +83,8 @@ describe("CustomerListPage", () => {
     renderWithRouter(<CustomerListPage user={testUser} />);
 
     await waitFor(() => {
-      expect(screen.getByText("LEAD")).toBeInTheDocument();
-      expect(screen.getByText("CUSTOMER")).toBeInTheDocument();
+      expect(desktopRows().getByText("LEAD")).toBeInTheDocument();
+      expect(desktopRows().getByText("CUSTOMER")).toBeInTheDocument();
     });
   });
 
@@ -93,7 +119,7 @@ describe("CustomerListPage", () => {
     await userEvent.click(screen.getByText(/^erstellen$/i));
 
     await waitFor(() => {
-      expect(screen.getByText("NewCo")).toBeInTheDocument();
+      expect(desktopRows().getByText("NewCo")).toBeInTheDocument();
     });
   });
 });
