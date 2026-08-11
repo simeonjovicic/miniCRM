@@ -99,7 +99,7 @@ const MOBILE_TABS = [
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
-  return `rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all ${
+  return `rounded-full px-4.5 py-2 text-[13px] font-medium transition-all ${
     isActive
       ? "bg-accent text-white shadow-sm"
       : "text-text-secondary hover:bg-border/50 hover:text-text-bright"
@@ -164,7 +164,7 @@ function NavDropdown({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all flex items-center gap-1 ${
+        className={`rounded-full px-4.5 py-2 text-[13px] font-medium transition-all flex items-center gap-1.5 ${
           isChildActive
             ? "bg-accent text-white shadow-sm"
             : "text-text-secondary hover:bg-border/50 hover:text-text-bright"
@@ -418,14 +418,14 @@ function AppShell({
       <div className="sticky top-0 z-50 px-4 pt-3 pb-1 pointer-events-none hidden md:block">
         <nav className="glass-nav pointer-events-auto mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-5 py-2.5">
           {/* Logo + Tabs */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-7">
             <NavLink
               to="/"
               className="text-[15px] font-bold tracking-tight text-text-bright"
             >
               MiniCRM
             </NavLink>
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1.5">
               {NAV_ITEMS.map((item) =>
                 "children" in item && item.children ? (
                   <NavDropdown key={item.label} item={item as { label: string; children: { to: string; label: string }[] }} />

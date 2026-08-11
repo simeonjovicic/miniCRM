@@ -7,3 +7,11 @@ spring:
       ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
     open-in-view: false
+
+# Diese Datei ersetzt application.yml im Test vollständig (gleicher Name, Test-Classpath
+# gewinnt) — die Finanz-Vorgaben müssen daher hier wiederholt werden.
+finance:
+  thresholds:
+    svs: 6613.20
+    small-business: 55000
+  split-basis: GROSS

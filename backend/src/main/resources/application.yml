@@ -32,6 +32,18 @@ server:
       max: 20
       min-spare: 2
 
+finance:
+  # ACHTUNG: Startwerte, keine Rechtsauskunft. Beide Grenzen ändern sich jährlich.
+  # Massgeblich ist, was unter Finanzen > Einstellungen eingetragen ist — dort
+  # werden die Werte pro Jahr gespeichert und überschreiben diese Vorgaben.
+  thresholds:
+    # SVS-Versicherungsgrenze — wird gegen den GEWINN gerechnet
+    svs: ${FINANCE_SVS_THRESHOLD:6613.20}
+    # Kleinunternehmergrenze Umsatzsteuer — wird gegen den UMSATZ gerechnet
+    small-business: ${FINANCE_SMALL_BUSINESS_THRESHOLD:55000}
+  # Basis für die 50/50-Aufteilung geteilter Einnahmen: GROSS oder NET
+  split-basis: ${FINANCE_SPLIT_BASIS:GROSS}
+
 smb:
   host: ${SMB_HOST:100.120.87.43}
   share: ${SMB_SHARE:Storage}

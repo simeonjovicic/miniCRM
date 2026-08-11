@@ -1,15 +1,17 @@
 package com.collabcrm.controller;
 
 import com.collabcrm.model.FinanceEntry;
+import com.collabcrm.model.FinanceSettings;
 import com.collabcrm.service.FinanceService;
+import com.collabcrm.service.FinanceSettingsService;
+import com.collabcrm.service.FinanceStatsService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
+import java.time.Year;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * REST-Controller für Finanzverwaltung (Einnahmen + Ausgaben).
@@ -20,10 +22,17 @@ import java.util.stream.Collectors;
 public class FinanceController {
 
     private final FinanceService financeService;
+    private final FinanceStatsService statsService;
+    private final FinanceSettingsService settingsService;
     private final SimpMessagingTemplate messagingTemplate;
 
-    public FinanceController(FinanceService financeService, SimpMessagingTemplate messagingTemplate) {
+    public FinanceController(FinanceService financeService,
+                             FinanceStatsService statsService,
+                             FinanceSettingsService settingsService,
+                             SimpMessagingTemplate messagingTemplate) {
         this.financeService = financeService;
+        this.statsService = statsService;
+        this.settingsService = settingsService;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -36,16 +45,25 @@ public class FinanceController {
     @ResponseStatus(HttpStatus.CREATED)
     public FinanceEntry create(@Valid @RequestBody FinanceEntry entry) {
         FinanceEntry created = financeService.create(entry);
-        messagingTemplate.convertAndSend("/topic/finance",
-                Map.of("type", "FINANCE_CREATED", "entityId", created.getId().toString()));
+        broadcast("FINANCE_CREATED", created.getId());
         return created;
     }
 
     @PutMapping("/{id}")
     public FinanceEntry update(@PathVariable UUID id, @Valid @RequestBody FinanceEntry entry) {
         FinanceEntry updated = financeService.update(id, entry);
-        messagingTemplate.convertAndSend("/topic/finance",
-                Map.of("type", "FINANCE_UPDATED", "entityId", updated.getId().toString()));
+        broadcast("FINANCE_UPDATED", updated.getId());
+        return updated;
+    }
+
+    /**
+     * Nur Status und Art umschalten — für den Klick direkt auf das Status-Abzeichen
+     * in der Liste, ohne den Umweg über das Formular.
+     */
+    @PatchMapping("/{id}/status")
+    public FinanceEntry updateStatus(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        FinanceEntry updated = financeService.updateStatus(id, body.get("status"), body.get("kind"));
+        broadcast("FINANCE_UPDATED", updated.getId());
         return updated;
     }
 
@@ -53,58 +71,46 @@ public class FinanceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         financeService.delete(id);
-        messagingTemplate.convertAndSend("/topic/finance",
-                Map.of("type", "FINANCE_DELETED", "entityId", id.toString()));
+        broadcast("FINANCE_DELETED", id);
     }
 
     /**
-     * Finanz-Statistiken: Gesamteinnahmen, -ausgaben, Gewinn und Pro-User-Aufschlüsselung.
-     * Alles live berechnet aus den Finanzeinträgen.
+     * Finanz-Statistiken für ein Kalenderjahr: Umsatz, Aufwand, Umsatzsteuer,
+     * Gewinn, offene Posten und Grenzwert-Fortschritt pro Person.
      */
     @GetMapping("/stats")
-    public Map<String, Object> getStats() {
-        var entries = financeService.findAll();
+    public Map<String, Object> getStats(@RequestParam(required = false) Integer year) {
+        return statsService.stats(year != null ? year : Year.now().getValue());
+    }
 
-        // Gesamteinnahmen berechnen (alle INCOME Einträge summieren)
-        BigDecimal totalIncome = entries.stream()
-                .filter(e -> "INCOME".equals(e.getType()))
-                .map(FinanceEntry::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    @GetMapping("/settings")
+    public FinanceSettings getSettings(@RequestParam(required = false) Integer year) {
+        return settingsService.forYear(year != null ? year : Year.now().getValue());
+    }
 
-        // Gesamtausgaben berechnen
-        BigDecimal totalExpense = entries.stream()
-                .filter(e -> "EXPENSE".equals(e.getType()))
-                .map(FinanceEntry::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    /** Grenzbeträge und Aufteilungsbasis anpassen — die Werte sind Sache des Users. */
+    @PutMapping("/settings")
+    public FinanceSettings updateSettings(@RequestParam(required = false) Integer year,
+                                          @RequestBody FinanceSettings settings) {
+        FinanceSettings saved = settingsService.update(
+                year != null ? year : Year.now().getValue(), settings);
+        messagingTemplate.convertAndSend("/topic/finance", Map.of("type", "FINANCE_SETTINGS_UPDATED"));
+        return saved;
+    }
 
-        // Pro-User Aufschlüsselung: Einnahmen, Ausgaben und Gewinn pro Person
-        var byUser = entries.stream()
-                .collect(Collectors.groupingBy(
-                        e -> e.getCreatedByUsername() != null ? e.getCreatedByUsername() : e.getCreatedBy().toString()));
+    private void broadcast(String type, UUID id) {
+        messagingTemplate.convertAndSend("/topic/finance",
+                Map.of("type", type, "entityId", id.toString()));
+    }
 
-        var perUser = new ArrayList<Map<String, Object>>();
-        for (var entry : byUser.entrySet()) {
-            BigDecimal userIncome = entry.getValue().stream()
-                    .filter(e -> "INCOME".equals(e.getType()))
-                    .map(FinanceEntry::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal userExpense = entry.getValue().stream()
-                    .filter(e -> "EXPENSE".equals(e.getType()))
-                    .map(FinanceEntry::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            perUser.add(Map.of(
-                    "username", entry.getKey(),
-                    "income", userIncome,
-                    "expense", userExpense,
-                    "profit", userIncome.subtract(userExpense)
-            ));
-        }
-
-        return Map.of(
-                "totalIncome", totalIncome,
-                "totalExpense", totalExpense,
-                "profit", totalIncome.subtract(totalExpense),
-                "perUser", perUser
-        );
+    /**
+     * Fachliche Fehler (unzulässiger USt-Satz, kaputte Anzahlungs-Verknüpfung,
+     * Löschen einer Rechnung mit Anzahlungen) landen als 400 beim Client statt
+     * als 500 — die Oberfläche zeigt die Meldung direkt an.
+     */
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleBadRequest(RuntimeException ex) {
+        return Map.of("error", ex.getMessage());
     }
 }

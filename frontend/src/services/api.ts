@@ -3,6 +3,10 @@ import type {
   Customer,
   TodoItem,
   FinanceEntry,
+  FinanceKind,
+  FinanceSettings,
+  FinanceStats,
+  FinanceStatus,
   TimeEntry,
 } from "../types";
 
@@ -20,7 +24,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
+    // Fachliche Fehler kommen als {"error": "..."} und sollen dem User im
+    // Klartext angezeigt werden statt als nackter Statuscode.
+    let message = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.clone().json();
+      if (body?.error) message = body.error;
+    } catch {
+      // Antwort war kein JSON — dann bleibt es beim Statuscode
+    }
+    throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -99,16 +112,6 @@ export const todosApi = {
   delete: (id: string) =>
     request<void>(`/todos/${id}`, { method: "DELETE" }),
 };
-
-// =====================================================
-// Finance API — Einnahmen und Ausgaben
-// =====================================================
-export interface FinanceStats {
-  totalIncome: number;
-  totalExpense: number;
-  profit: number;
-  perUser: { username: string; income: number; expense: number; profit: number }[];
-}
 
 // =====================================================
 // Time Entries API — Zeiterfassung
@@ -234,5 +237,22 @@ export const financeApi = {
     }),
   delete: (id: string) =>
     request<void>(`/finance/${id}`, { method: "DELETE" }),
-  stats: () => request<FinanceStats>("/finance/stats"),
+  /**
+   * Schaltet nur Status und Art um. Eigener Endpunkt, damit Kunde,
+   * Rechnungsanhang und Anzahlungs-Verknüpfung dabei erhalten bleiben.
+   */
+  setStatus: (id: string, status: FinanceStatus, kind: FinanceKind) =>
+    request<FinanceEntry>(`/finance/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, kind }),
+    }),
+  /** Jahresstatistik inkl. Grenzwert-Fortschritt pro Person */
+  stats: (year: number) => request<FinanceStats>(`/finance/stats?year=${year}`),
+  settings: (year: number) =>
+    request<FinanceSettings>(`/finance/settings?year=${year}`),
+  updateSettings: (year: number, settings: Partial<FinanceSettings>) =>
+    request<FinanceSettings>(`/finance/settings?year=${year}`, {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
 };
