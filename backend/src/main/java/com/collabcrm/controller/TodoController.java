@@ -1,6 +1,7 @@
 package com.collabcrm.controller;
 
 import com.collabcrm.model.Todo;
+import com.collabcrm.model.TodoComment;
 import com.collabcrm.service.TodoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -56,6 +57,30 @@ public class TodoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         todoService.delete(id);
+        messagingTemplate.convertAndSend("/topic/todos",
+                Map.of("type", "TODO_CHANGED"));
+    }
+
+    // ── Kommentare ────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/comments")
+    public List<TodoComment> getComments(@PathVariable UUID id) {
+        return todoService.findComments(id);
+    }
+
+    @PostMapping("/{id}/comments")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TodoComment addComment(@PathVariable UUID id, @Valid @RequestBody TodoComment comment) {
+        TodoComment created = todoService.addComment(id, comment);
+        messagingTemplate.convertAndSend("/topic/todos",
+                Map.of("type", "TODO_CHANGED"));
+        return created;
+    }
+
+    @DeleteMapping("/{todoId}/comments/{commentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteComment(@PathVariable UUID todoId, @PathVariable UUID commentId) {
+        todoService.deleteComment(commentId);
         messagingTemplate.convertAndSend("/topic/todos",
                 Map.of("type", "TODO_CHANGED"));
     }

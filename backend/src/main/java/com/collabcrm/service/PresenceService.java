@@ -1,5 +1,6 @@
 package com.collabcrm.service;
 
+import com.collabcrm.repository.UserRepository;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PresenceService {
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserRepository userRepository;
 
     // sessionId → UserPresence (welcher User hinter dieser WebSocket-Session steckt)
     private final Map<String, UserPresence> sessions = new ConcurrentHashMap<>();
@@ -34,8 +36,9 @@ public class PresenceService {
     // userId → UserPresence (für persistente Mitgliederliste auch für offline User)
     private final Map<String, UserPresence> knownUsers = new ConcurrentHashMap<>();
 
-    public PresenceService(SimpMessagingTemplate messagingTemplate) {
+    public PresenceService(SimpMessagingTemplate messagingTemplate, UserRepository userRepository) {
         this.messagingTemplate = messagingTemplate;
+        this.userRepository = userRepository;
     }
 
     public record UserPresence(String userId, String username) {}
@@ -109,21 +112,32 @@ public class PresenceService {
      * Wird für die "Mitglieder"-Karte auf dem Dashboard verwendet.
      * Online-User haben lastSeenAt=null; Offline-User haben einen ISO-8601-Timestamp.
      */
+    /**
+     * Alle Mitglieder mit ihrem Online-Status.
+     *
+     * Grundlage sind die tatsächlich angelegten Benutzer, nicht nur die, die sich
+     * seit dem Start einmal verbunden haben — sonst wäre die Mitgliederliste nach
+     * jedem Neustart leer, bis alle die App einmal geöffnet haben.
+     * {@code knownUsers} ergänzt lediglich Namen zu Sessions, deren Benutzer
+     * inzwischen gelöscht wurde.
+     */
     public List<Map<String, Object>> getAllUsersPresence() {
         // Aktuell verbundene userIds für schnellen Lookup
         var onlineUserIds = sessions.values().stream()
                 .map(UserPresence::userId)
                 .collect(java.util.stream.Collectors.toSet());
 
-        return knownUsers.values().stream()
-                .distinct()
-                .map(p -> {
-                    boolean online = onlineUserIds.contains(p.userId());
-                    Instant seen = lastSeenAt.get(p.userId());
-                    Map<String, Object> m = new java.util.LinkedHashMap<>();
-                    m.put("userId", p.userId());
-                    m.put("username", p.username());
-                    m.put("online", online);
+        Map<String, String> members = new LinkedHashMap<>();
+        userRepository.findAll().forEach(u -> members.put(u.getId().toString(), u.getUsername()));
+        knownUsers.forEach((id, presence) -> members.putIfAbsent(id, presence.username()));
+
+        return members.entrySet().stream()
+                .map(entry -> {
+                    Instant seen = lastSeenAt.get(entry.getKey());
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("userId", entry.getKey());
+                    m.put("username", entry.getValue());
+                    m.put("online", onlineUserIds.contains(entry.getKey()));
                     m.put("lastSeenAt", seen != null ? seen.toString() : null);
                     return m;
                 })

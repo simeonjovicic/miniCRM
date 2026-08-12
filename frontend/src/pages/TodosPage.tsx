@@ -1,7 +1,10 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
+import { Link } from "react-router-dom";
 import { todosApi, customersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
-import type { User, TodoItem, Customer } from "../types";
+import CustomerMentionInput from "../components/CustomerMentionInput";
+import AppointmentsPanel from "../components/AppointmentsPanel";
+import type { User, TodoItem, TodoComment, Customer } from "../types";
 
 const PRIORITY_COLORS = {
   HIGH: "bg-[#ff453a]",
@@ -18,12 +21,9 @@ export default function TodosPage({ user }: { user: User }) {
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Autocomplete state
-  const [suggestions, setSuggestions] = useState<Customer[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  /** Kunde, der für das neue Todo per @ ausgewählt wurde */
+  const [newCustomer, setNewCustomer] = useState<{ id: string; name: string } | null>(null);
+  const [tab, setTab] = useState<"TODOS" | "TERMINE">("TODOS");
 
   function reload() {
     todosApi.list().then(setTodos);
@@ -64,84 +64,21 @@ export default function TodosPage({ user }: { user: User }) {
     };
   }, []);
 
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value;
-      setInput(val);
-
-      const cursor = e.target.selectionStart ?? val.length;
-
-      // Find the last @ before cursor
-      const before = val.slice(0, cursor);
-      const atIdx = before.lastIndexOf("@");
-
-      if (atIdx !== -1 && (atIdx === 0 || val[atIdx - 1] === " ")) {
-        const query = before.slice(atIdx + 1).toLowerCase();
-        const matches = customers.filter((c) =>
-          c.name.toLowerCase().includes(query),
-        );
-        if (matches.length > 0 && query.length > 0) {
-          setSuggestions(matches.slice(0, 5));
-          setSelectedIdx(0);
-          setMentionStart(atIdx);
-          return;
-        }
-      }
-
-      setSuggestions([]);
-      setMentionStart(null);
-    },
-    [customers],
-  );
-
-  function insertMention(customer: Customer) {
-    if (mentionStart === null) return;
-    const cursor = inputRef.current?.selectionStart ?? input.length;
-    const before = input.slice(0, mentionStart);
-    const after = input.slice(cursor);
-    const newVal = `${before}${customer.name} ${after}`;
-    setInput(newVal);
-    setSuggestions([]);
-    setMentionStart(null);
-    inputRef.current?.focus();
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (suggestions.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Tab" || e.key === "Enter") {
-      if (suggestions.length > 0) {
-        e.preventDefault();
-        insertMention(suggestions[selectedIdx]);
-      }
-    } else if (e.key === "Escape") {
-      setSuggestions([]);
-      setMentionStart(null);
-    }
-  }
-
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (suggestions.length > 0) return; // don't submit while picking
     if (!input.trim()) return;
     const created = await todosApi.create({
       title: input.trim(),
       done: false,
       priority: "MEDIUM",
+      customerId: newCustomer?.id,
+      customerName: newCustomer?.name,
       createdBy: user.id,
       createdByUsername: user.username,
     });
     setTodos((prev) => [created, ...prev]);
     setInput("");
-    setSuggestions([]);
-    setMentionStart(null);
-    inputRef.current?.focus();
+    setNewCustomer(null);
   }
 
   async function handleToggleDone(todo: TodoItem) {
@@ -149,8 +86,15 @@ export default function TodosPage({ user }: { user: User }) {
     setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
   }
 
+  /**
+   * Der Server ersetzt das Todo vollständig, deshalb wird der bestehende Stand
+   * mitgeschickt. Nur die Änderung zu senden würde Fälligkeit, Notizen und die
+   * Kundenverknüpfung löschen.
+   */
   async function handleUpdate(id: string, changes: Partial<TodoItem>) {
-    const updated = await todosApi.update(id, changes as Partial<TodoItem>);
+    const current = todos.find((t) => t.id === id);
+    if (!current) return;
+    const updated = await todosApi.update(id, { ...current, ...changes });
     setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
   }
 
@@ -183,165 +127,171 @@ export default function TodosPage({ user }: { user: User }) {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-text-bright">Todos</h1>
-        <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">
-          {totalOpen} offen
-        </span>
-      </div>
-
-      {/* Apple-style input bar with autocomplete */}
-      <form onSubmit={handleAdd} className="relative z-10 mb-6">
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Neues Todo hinzufügen... (@Kunde für Erwähnung)"
-          className="glass-input w-full rounded-xl px-4 py-3 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-        />
-
-        {/* Autocomplete dropdown */}
-        {suggestions.length > 0 && (
-          <div className="glass-strong absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl shadow-lg">
-            {suggestions.map((c, i) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => insertMention(c)}
-                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
-                  i === selectedIdx
-                    ? "bg-accent/10 text-accent"
-                    : "text-text-bright hover:bg-white/50"
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1 rounded-full bg-white/50 p-1">
+          <button
+            onClick={() => setTab("TODOS")}
+            aria-pressed={tab === "TODOS"}
+            className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold transition-all ${
+              tab === "TODOS" ? "bg-accent text-white shadow-sm" : "text-text-secondary hover:text-text-bright"
+            }`}
+          >
+            Todos
+            {totalOpen > 0 && (
+              <span
+                className={`rounded-full px-1.5 text-[10px] ${
+                  tab === "TODOS" ? "bg-white/25" : "bg-accent/15 text-accent"
                 }`}
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
-                  {c.name[0].toUpperCase()}
-                </span>
-                <span className="font-medium">{c.name}</span>
-                {c.company && (
-                  <span className="text-xs text-text-secondary">
-                    {c.company}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </form>
-
-      {/* Filters */}
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        {/* Priority filter */}
-        <div className="flex items-center gap-1.5">
-          {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setFilterPriority(p)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                filterPriority === p
-                  ? "bg-accent text-white"
-                  : "glass-chip text-text-secondary hover:text-text-bright"
-              }`}
-            >
-              {p !== "ALL" && (
-                <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_COLORS[p]}`} />
-              )}
-              {p === "ALL" ? "Alle" : p === "HIGH" ? "Hoch" : p === "MEDIUM" ? "Mittel" : "Niedrig"}
-            </button>
-          ))}
+                {totalOpen}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab("TERMINE")}
+            aria-pressed={tab === "TERMINE"}
+            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-all ${
+              tab === "TERMINE" ? "bg-accent text-white shadow-sm" : "text-text-secondary hover:text-text-bright"
+            }`}
+          >
+            Termine
+          </button>
         </div>
+      </div>
 
-        {/* User filter (only when multiple users) */}
-        {users.length > 1 && (
-          <>
-            <span className="text-border">|</span>
-            <button
-              onClick={() => setFilterUser("ALL")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                filterUser === "ALL"
-                  ? "bg-accent text-white"
-                  : "glass-chip text-text-secondary hover:text-text-bright"
-              }`}
-            >
-              Alle
-            </button>
-            {users.map(([id, name]) => (
+      {tab === "TERMINE" && <AppointmentsPanel user={user} customers={customers} />}
+
+      {tab === "TODOS" && (
+        <>
+        {/* Schnelleingabe — @ verknüpft einen Kunden */}
+        <form onSubmit={handleAdd} className="relative z-10 mb-6">
+          <CustomerMentionInput
+            value={input}
+            onChange={setInput}
+            customers={customers}
+            linkedCustomerName={newCustomer?.name}
+            onPick={(c) => setNewCustomer({ id: c.id, name: c.name })}
+            onUnlink={() => setNewCustomer(null)}
+            placeholder="Neues Todo hinzufügen... (@ verknüpft einen Kunden)"
+            aria-label="Neues Todo"
+          />
+        </form>
+
+        {/* Filters */}
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {/* Priority filter */}
+          <div className="flex items-center gap-1.5">
+            {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((p) => (
               <button
-                key={id}
-                onClick={() => setFilterUser(id)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                  filterUser === id
+                key={p}
+                onClick={() => setFilterPriority(p)}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                  filterPriority === p
                     ? "bg-accent text-white"
                     : "glass-chip text-text-secondary hover:text-text-bright"
                 }`}
               >
-                {name}
+                {p !== "ALL" && (
+                  <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_COLORS[p]}`} />
+                )}
+                {p === "ALL" ? "Alle" : p === "HIGH" ? "Hoch" : p === "MEDIUM" ? "Mittel" : "Niedrig"}
               </button>
             ))}
-          </>
-        )}
-      </div>
+          </div>
 
-      {/* Open todos */}
-      {openTodos.length === 0 ? (
-        <p className="text-sm text-text-secondary">Keine offenen Todos.</p>
-      ) : (
-        <ul className="space-y-1">
-          {openTodos.map((todo) => (
-            <TodoRow
-              key={todo.id}
-              todo={todo}
-              expandedId={expandedId}
-              setExpandedId={setExpandedId}
-              onToggle={handleToggleDone}
-              onUpdate={handleUpdate}
-              onDelete={handleDelete}
-              customers={customers}
-              userId={user.id}
-            />
-          ))}
-        </ul>
-      )}
-
-      {/* Completed section */}
-      {completedTodos.length > 0 && (
-        <div className="mt-6">
-          <button
-            onClick={() => setCompletedExpanded((v) => !v)}
-            className="mb-2 flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-bright transition-colors"
-          >
-            <svg
-              className={`h-4 w-4 transition-transform ${completedExpanded ? "rotate-90" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-            Erledigt ({completedTodos.length})
-          </button>
-
-          {completedExpanded && (
-            <ul className="space-y-1 opacity-60">
-              {completedTodos.map((todo) => (
-                <TodoRow
-                  key={todo.id}
-                  todo={todo}
-                  expandedId={expandedId}
-                  setExpandedId={setExpandedId}
-                  onToggle={handleToggleDone}
-                  onUpdate={handleUpdate}
-                  onDelete={handleDelete}
-                  customers={customers}
-                  userId={user.id}
-                />
+          {/* User filter (only when multiple users) */}
+          {users.length > 1 && (
+            <>
+              <span className="text-border">|</span>
+              <button
+                onClick={() => setFilterUser("ALL")}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                  filterUser === "ALL"
+                    ? "bg-accent text-white"
+                    : "glass-chip text-text-secondary hover:text-text-bright"
+                }`}
+              >
+                Alle
+              </button>
+              {users.map(([id, name]) => (
+                <button
+                  key={id}
+                  onClick={() => setFilterUser(id)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    filterUser === id
+                      ? "bg-accent text-white"
+                      : "glass-chip text-text-secondary hover:text-text-bright"
+                  }`}
+                >
+                  {name}
+                </button>
               ))}
-            </ul>
+            </>
           )}
         </div>
+
+        {/* Open todos */}
+        {openTodos.length === 0 ? (
+          <p className="text-sm text-text-secondary">Keine offenen Todos.</p>
+        ) : (
+          <ul className="space-y-1">
+            {openTodos.map((todo) => (
+              <TodoRow
+                key={todo.id}
+                todo={todo}
+                expandedId={expandedId}
+                setExpandedId={setExpandedId}
+                onToggle={handleToggleDone}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                customers={customers}
+                user={user}
+              />
+            ))}
+          </ul>
+        )}
+
+        {/* Completed section */}
+        {completedTodos.length > 0 && (
+          <div className="mt-6">
+            <button
+              onClick={() => setCompletedExpanded((v) => !v)}
+              className="mb-2 flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-bright transition-colors"
+            >
+              <svg
+                className={`h-4 w-4 transition-transform ${completedExpanded ? "rotate-90" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              Erledigt ({completedTodos.length})
+            </button>
+
+            {completedExpanded && (
+              <ul className="space-y-1 opacity-60">
+                {completedTodos.map((todo) => (
+                  <TodoRow
+                    key={todo.id}
+                    todo={todo}
+                    expandedId={expandedId}
+                    setExpandedId={setExpandedId}
+                    onToggle={handleToggleDone}
+                    onUpdate={handleUpdate}
+                    onDelete={handleDelete}
+                    customers={customers}
+                    user={user}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        </>
       )}
+
     </div>
   );
 }
@@ -354,7 +304,7 @@ function TodoRow({
   onUpdate,
   onDelete,
   customers,
-  userId,
+  user,
 }: {
   todo: TodoItem;
   expandedId: string | null;
@@ -363,7 +313,7 @@ function TodoRow({
   onUpdate: (id: string, changes: Partial<TodoItem>) => void;
   onDelete: (id: string) => void;
   customers: Customer[];
-  userId: string;
+  user: User;
 }) {
   return (
     <li>
@@ -407,13 +357,36 @@ function TodoRow({
           )}
         </button>
 
+        {todo.customerId && todo.customerName && (
+          <Link
+            to={`/customers/${todo.customerId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 rounded-full bg-status-prospect/15 px-2 py-0.5 text-[10px] font-medium text-status-prospect transition-colors hover:bg-status-prospect/25"
+          >
+            @{todo.customerName}
+          </Link>
+        )}
+
+        {todo.commentCount > 0 && (
+          <button
+            onClick={() => setExpandedId(expandedId === todo.id ? null : todo.id)}
+            aria-label={`${todo.commentCount} Kommentare`}
+            className="flex shrink-0 items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-medium text-text-secondary transition-colors hover:text-text-bright"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {todo.commentCount}
+          </button>
+        )}
+
         <span className="shrink-0 text-[11px] text-text-secondary">{todo.createdByUsername}</span>
       </div>
 
       {expandedId === todo.id && (
         <TodoDetail
           todo={todo}
-          isOwner={todo.createdBy === userId}
+          user={user}
           customerNames={customers.map((c) => c.name)}
           onUpdate={(changes) => onUpdate(todo.id, changes)}
           onDelete={() => onDelete(todo.id)}
@@ -462,17 +435,18 @@ function HighlightMentions({
 
 function TodoDetail({
   todo,
-  isOwner,
+  user,
   customerNames,
   onUpdate,
   onDelete,
 }: {
   todo: TodoItem;
-  isOwner: boolean;
+  user: User;
   customerNames: string[];
   onUpdate: (changes: Partial<TodoItem>) => void;
   onDelete: () => void;
 }) {
+  const isOwner = todo.createdBy === user.id;
   const [title, setTitle] = useState(todo.title);
   const [priority, setPriority] = useState(todo.priority);
   const [dueDate, setDueDate] = useState(todo.dueDate ?? "");
@@ -546,6 +520,8 @@ function TodoDetail({
           />
         </div>
       </div>
+      <TodoComments todoId={todo.id} user={user} />
+
       {isOwner && (
         <button
           onClick={onDelete}
@@ -559,4 +535,115 @@ function TodoDetail({
       )}
     </div>
   );
+}
+
+/**
+ * Der Verlauf am Todo. Ersetzt die Absprache im Chat: die Wortmeldungen stehen
+ * dort, wo die Aufgabe steht, und bleiben auch nach dem Abhaken erhalten.
+ *
+ * Geladen wird erst beim Aufklappen — die Liste zeigt nur den Zähler.
+ */
+function TodoComments({ todoId, user }: { todoId: string; user: User }) {
+  const [comments, setComments] = useState<TodoComment[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    todosApi
+      .comments(todoId)
+      .then((c) => active && setComments(c))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [todoId]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      const created = await todosApi.addComment(todoId, {
+        text: text.trim(),
+        createdBy: user.id,
+        createdByUsername: user.username,
+      });
+      setComments((prev) => [...prev, created]);
+      setText("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    await todosApi.deleteComment(todoId, id);
+    setComments((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  return (
+    <div className="mt-3 border-t border-white/40 pt-3">
+      <p className="mb-2 text-xs font-medium text-text-secondary">
+        Verlauf {comments.length > 0 && `(${comments.length})`}
+      </p>
+
+      {loading ? (
+        <p className="text-xs text-text-secondary">Lade...</p>
+      ) : (
+        comments.length > 0 && (
+          <ul className="mb-2 space-y-1.5">
+            {comments.map((c) => (
+              <li key={c.id} className="group flex items-baseline gap-2">
+                <span className="shrink-0 text-xs font-semibold text-accent">
+                  {c.createdByUsername ?? "?"}
+                </span>
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-text-bright">
+                  {c.text}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-text-secondary">
+                  {formatCommentTime(c.createdAt)}
+                </span>
+                {c.createdBy === user.id && (
+                  <button
+                    onClick={() => remove(c.id)}
+                    aria-label="Kommentar löschen"
+                    className="shrink-0 text-[10px] text-text-secondary opacity-0 transition-opacity hover:text-status-churned group-hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+
+      <form onSubmit={add} className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Antworten..."
+          aria-label="Kommentar schreiben"
+          className="glass-input min-w-0 flex-1 rounded-lg px-3 py-1.5 text-sm text-text-bright outline-none transition-all focus:ring-2 focus:ring-accent/20"
+        />
+        <button
+          type="submit"
+          disabled={!text.trim() || busy}
+          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-opacity disabled:opacity-40"
+        >
+          Senden
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/** Heute nur die Uhrzeit, sonst zusätzlich das Datum. */
+function formatCommentTime(iso: string): string {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const isToday = date.toDateString() === new Date().toDateString();
+  return isToday ? time : `${date.toLocaleDateString("de-DE")} ${time}`;
 }

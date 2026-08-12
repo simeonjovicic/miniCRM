@@ -40,8 +40,58 @@ cp .env.example .env
 |----------|-------------|
 | `SMB_USERNAME` | Samba username for the file browser (optional) |
 | `SMB_PASSWORD` | Samba password for the file browser (optional) |
+| `NTFY_TOPIC` | ntfy topic for appointment reminders (optional) |
+| `REMINDER_DAYS_BEFORE` | Days before an appointment to remind, default `2,1` |
+| `REMINDER_HOUR` | Hour of day reminders go out, default `9` |
 
-The app runs fine without these — the file browser will simply be unavailable.
+The app runs fine without these — the file browser and push reminders will
+simply be unavailable.
+
+---
+
+## Termin-Erinnerungen (Push aufs Handy)
+
+Der Server prüft alle 15 Minuten, ob eine Erinnerung fällig ist, und schickt sie
+über [ntfy](https://ntfy.sh) aufs Handy — standardmäßig 2 Tage und 1 Tag vor dem
+Termin um 9:00. Weil der Pi ohnehin durchläuft, braucht es dafür keinen
+zusätzlichen Dienst.
+
+### Einrichten
+
+1. ntfy-App installieren (iOS oder Android, kostenlos)
+2. Ein **langes, zufälliges** Thema abonnieren, z. B. `minicrm-f7k2p9x4qz`
+3. Dasselbe Thema als `NTFY_TOPIC` hinterlegen:
+   - lokal in `backend/src/main/resources/application-local.yml` (gitignored)
+   - auf dem Pi in `/home/pi/minicrm/.env`
+
+> **Der Themenname ist das einzige Geheimnis.** Wer ihn kennt, kann mitlesen und
+> selbst Nachrichten schicken. Deshalb lang und zufällig wählen und niemals
+> committen. Wer beide Handys auf dasselbe Thema abonniert, bekommt die
+> Erinnerungen auf beiden Geräten.
+
+Ob es aktiv ist, steht beim Start im Log:
+
+```
+Push-Erinnerungen aktiv (ntfy-Thema minicrm-***)
+Push-Erinnerungen inaktiv — ntfy.topic ist nicht gesetzt
+```
+
+### Wann genau erinnert wird
+
+Jede Vorlaufzeit hat ein 24-Stunden-Fenster statt eines exakten Zeitpunkts:
+
+```
+Termin: Do 14.08. um 14:00
+
+  "in 2 Tagen"   Fenster  Di 12.08. 09:00 → Mi 13.08. 09:00
+  "morgen"       Fenster  Mi 13.08. 09:00 → Do 14.08. 09:00
+```
+
+Das hat zwei Gründe: der Pi darf zwischendurch aus sein und holt die Erinnerung
+beim nächsten Lauf nach — und ein Termin, der erst einen Tag vorher eingetragen
+wird, bekommt keine unsinnige "in 2 Tagen"-Meldung mehr, weil dieses Fenster
+bereits geschlossen ist. Wird ein Termin verschoben, gelten die Erinnerungen
+wieder als offen.
 
 ---
 
@@ -180,6 +230,10 @@ miniCRM/
 - **Real-time collaboration** via STOMP/WebSocket — edits sync across all open tabs instantly
 - **CRDT conflict resolution** — Last-Write-Wins registers, OR-Sets, and PN-Counters for offline-safe merges
 - **Mitglieder panel** — Shows all team members with live online status (pulsing green dot) and "last seen" timestamp for offline members
+- **Todos** — Quick capture with `@customer` linking and a comment thread per todo
+- **Termine** — Appointments with push reminders 2 days and 1 day ahead via ntfy
 - **Time tracking** — Per-user timer with customer/todo linking
 - **File browser** — Samba (SMB) network share integration
-- **Finance tracker** — Income/expense entries with per-user breakdown
+- **Finance tracker** — VAT-aware income/expense entries, deposits, 50/50 profit
+  splitting between two sole proprietors, and per-person progress against the
+  SVS and small-business thresholds

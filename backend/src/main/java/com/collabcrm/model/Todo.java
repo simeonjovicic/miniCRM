@@ -36,6 +36,21 @@ public class Todo extends AbstractPersistable<UUID> {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel. */
+    @Column
+    private UUID customerId;
+
+    /** Kundenname für die Anzeige ohne zusätzliche Abfrage. */
+    private String customerName;
+
+    /**
+     * Anzahl der Kommentare — wird beim Laden der Liste gefüllt und nicht
+     * gespeichert. So sieht man am Todo, dass eine Absprache dranhängt, ohne
+     * für jedes einzeln nachladen zu müssen.
+     */
+    @Transient
+    private int commentCount;
+
     /** Welcher User dieses Todo erstellt hat */
     @NotNull
     @Column(nullable = false)
@@ -67,6 +82,15 @@ public class Todo extends AbstractPersistable<UUID> {
 
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+
+    public UUID getCustomerId() { return customerId; }
+    public void setCustomerId(UUID customerId) { this.customerId = customerId; }
+
+    public String getCustomerName() { return customerName; }
+    public void setCustomerName(String customerName) { this.customerName = customerName; }
+
+    public int getCommentCount() { return commentCount; }
+    public void setCommentCount(int commentCount) { this.commentCount = commentCount; }
 
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }

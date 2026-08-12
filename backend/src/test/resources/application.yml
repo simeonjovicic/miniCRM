@@ -10,6 +10,16 @@ spring:
 
 # Diese Datei ersetzt application.yml im Test vollständig (gleicher Name, Test-Classpath
 # gewinnt) — die Finanz-Vorgaben müssen daher hier wiederholt werden.
+ntfy:
+  base-url: http://localhost:9999
+  topic: ""
+
+reminders:
+  days-before: 2,1
+  hour: 9
+  # Im Test nicht von selbst loslaufen
+  check-interval-ms: 3600000
+
 finance:
   thresholds:
     svs: 6613.20

@@ -25,6 +25,41 @@ export interface TodoItem {
   priority: "LOW" | "MEDIUM" | "HIGH";
   dueDate: string | null;
   notes: string | null;
+  /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel */
+  customerId?: string;
+  customerName?: string;
+  /** Anzahl der Kommentare — kommt aus der Liste, wird nicht gespeichert */
+  commentCount: number;
+  createdBy: string;
+  createdByUsername: string | null;
+  createdAt: string;
+}
+
+/**
+ * Ein Termin. Anders als ein Todo hat er eine Uhrzeit und wird nicht abgehakt.
+ * Der Pi schickt vorher Erinnerungen aufs Handy.
+ */
+export interface Appointment {
+  id: string;
+  title: string;
+  description?: string;
+  /** Lokale Zeit ohne Zeitzone, z.B. "2026-08-14T14:00:00" */
+  startsAt: string;
+  location?: string;
+  customerId?: string;
+  customerName?: string;
+  /** Bereits verschickte Erinnerungen als "2,1" — nur zur Anzeige */
+  remindersSentDays?: string;
+  createdBy: string;
+  createdByUsername: string | null;
+  createdAt: string;
+}
+
+/** Eine Wortmeldung an einem Todo */
+export interface TodoComment {
+  id: string;
+  todoId: string;
+  text: string;
   createdBy: string;
   createdByUsername: string | null;
   createdAt: string;

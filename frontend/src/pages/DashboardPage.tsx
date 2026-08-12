@@ -1,22 +1,26 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { dashboardApi, type DashboardStats } from "../services/api";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  dashboardApi,
+  type DashboardInvoice,
+  type DashboardStats,
+  type DashboardTodo,
+  type DashboardUserProfit,
+  type UserPresence,
+} from "../services/api";
 import { subscribe } from "../services/websocket";
-import type { User, Customer } from "../types";
-import CustomerStatusBadge from "../components/CustomerStatusBadge";
+import type { User } from "../types";
 
-type ContributorPresence = {
-  userId: string;
-  username: string;
-  online: boolean;
-  lastSeenAt: string | null;
+const PRIORITY_COLORS: Record<DashboardTodo["priority"], string> = {
+  HIGH: "bg-[#ff453a]",
+  MEDIUM: "bg-[#ff9f0a]",
+  LOW: "bg-[#30d158]",
 };
 
-/** Gibt eine lesbare relative Zeit auf Deutsch zurück, z.B. "vor 5 Min" */
+/** Lesbare relative Zeit auf Deutsch, z.B. "vor 5 Min" */
 function formatRelative(iso: string | null): string {
   if (!iso) return "noch nie online";
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
+  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
   if (diffMin < 1) return "gerade eben";
   if (diffMin < 60) return `vor ${diffMin} Min`;
   const diffH = Math.floor(diffMin / 60);
@@ -24,125 +28,281 @@ function formatRelative(iso: string | null): string {
   return `vor ${Math.floor(diffH / 24)} d`;
 }
 
-export default function DashboardPage({ user }: { user: User }) {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [contributors, setContributors] = useState<ContributorPresence[]>([]);
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value ?? 0);
+}
 
-  useEffect(() => {
+export default function DashboardPage({ user }: { user: User }) {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [presence, setPresence] = useState<UserPresence[]>([]);
+
+  const reload = useCallback(() => {
     dashboardApi.stats().then((data) => {
       setStats(data);
-      setContributors(data.onlineUsers);
+      setPresence(data.onlineUsers);
     });
   }, []);
 
+  useEffect(() => reload(), [reload]);
+
+  // Anwesenheit kommt live, alles andere wird nach Änderungen nachgeladen
   useEffect(() => {
-    const unsub = subscribe("/topic/presence/online", (data) => {
-      setContributors(data as ContributorPresence[]);
-    });
+    const unsub = subscribe("/topic/presence/online", (data) =>
+      setPresence(data as UserPresence[]),
+    );
     return unsub;
   }, []);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
-    const unsub = subscribe("/topic/customers", () => {
+    const refresh = () => {
       clearTimeout(timeout);
-      timeout = setTimeout(() => dashboardApi.stats().then(setStats), 2000);
-    });
-    return () => { unsub(); clearTimeout(timeout); };
-  }, []);
+      timeout = setTimeout(reload, 1500);
+    };
+    const unsubs = [subscribe("/topic/todos", refresh), subscribe("/topic/finance", refresh)];
+    return () => {
+      unsubs.forEach((u) => u());
+      clearTimeout(timeout);
+    };
+  }, [reload]);
 
   if (!stats) return <p className="text-sm text-text-secondary">Lade Dashboard...</p>;
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-bold text-text-bright">Dashboard</h1>
+      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-xl font-bold text-text-bright">Dashboard</h1>
+        <span className="text-xs text-text-secondary">Gewinn im Jahr {stats.year}</span>
+      </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-2 sm:mb-8 sm:gap-4 sm:grid-cols-4">
-        <StatCard label="Kunden gesamt" value={stats.totalCustomers} />
-        <StatCard label="Leads" value={stats.leads} color="text-[#c77d08]" />
-        <StatCard label="Prospects" value={stats.prospects} color="text-[#1a8fc4]" />
-        <StatCard label="Aktive Kunden" value={stats.activeCustomers} color="text-[#1fa03f]" />
+      {/* Gewinn je Person */}
+      <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
+        {stats.perUser.length === 0 ? (
+          <p className="text-sm text-text-secondary">
+            Noch keine Finanzeinträge in {stats.year}.
+          </p>
+        ) : (
+          stats.perUser.map((person) => <ProfitCard key={person.userId ?? person.username} person={person} />)
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:gap-6">
-        <div className="glass lg:col-span-2 rounded-2xl p-4 sm:p-5">
-          <h2 className="mb-4 text-sm font-semibold text-text-bright">Zuletzt erstellt</h2>
-          {stats.recentCustomers.length === 0 ? (
-            <p className="text-xs text-text-secondary">Keine Kunden vorhanden.</p>
-          ) : (
-            <ul className="space-y-2">
-              {stats.recentCustomers.map((c) => (
-                <li
-                  key={c.id}
-                  onClick={() => navigate(`/customers/${c.id}`)}
-                  className="flex cursor-pointer items-center justify-between rounded-xl bg-white/40 px-4 py-3 transition-all hover:bg-white/65 active:scale-[0.995]"
-                >
-                  <div>
-                    <span className="text-sm font-medium text-text-bright">{c.name}</span>
-                    <span className="ml-3 font-mono text-xs text-text-secondary">
-                      {new Date(c.createdAt).toLocaleDateString("de-DE")}
-                    </span>
-                  </div>
-                  <CustomerStatusBadge status={c.status as Customer["status"]} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <OpenTodos stats={stats} />
 
-        <div className="glass rounded-2xl p-5">
-          <h2 className="mb-4 text-sm font-semibold text-text-bright">Mitglieder</h2>
-          {contributors.length === 0 ? (
-            <p className="text-xs text-text-secondary">Noch keine Mitglieder bekannt.</p>
-          ) : (
-            <ul className="space-y-2.5">
-              {contributors.map((u) => {
-                // Always treat the currently logged-in user as online —
-                // the REST snapshot may arrive before the WebSocket reconnects
-                // after a page refresh, which would incorrectly mark self as offline.
-                const isOnline = u.online || u.userId === user.id;
-                return (
-                  <li key={u.userId} className="flex items-center gap-3">
-                    {isOnline ? (
-                      /* Pulsierender grüner Dot — online */
-                      <span className="relative flex h-2 w-2 flex-shrink-0">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-customer opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-status-customer" />
-                      </span>
-                    ) : (
-                      /* Statischer grauer Dot — offline */
-                      <span className="relative flex h-2 w-2 flex-shrink-0">
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-slate-400" />
-                      </span>
-                    )}
-                    <span className={`text-sm ${isOnline ? "text-text-bright" : "text-text-secondary"}`}>
-                      {u.username}
-                      {u.userId === user.id && (
-                        <span className="ml-1.5 text-xs opacity-60">(du)</span>
-                      )}
-                    </span>
-                    {!isOnline && (
-                      <span className="ml-auto text-[11px] text-text-secondary opacity-70">
-                        {formatRelative(u.lastSeenAt)}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+        <div className="space-y-4 sm:space-y-6">
+          <Members presence={presence} currentUserId={user.id} />
+          <OpenInvoices stats={stats} />
         </div>
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value, color = "text-text-bright" }: { label: string; value: number; color?: string }) {
+function ProfitCard({ person }: { person: DashboardUserProfit }) {
   return (
-    <div className="glass rounded-2xl p-3 sm:p-4">
-      <p className="text-[10px] font-medium text-text-secondary sm:text-xs">{label}</p>
-      <p className={`mt-1 font-mono text-xl font-bold sm:text-2xl ${color}`}>{value}</p>
+    <div className="glass rounded-2xl p-4 sm:p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold text-text-bright">{person.username}</span>
+        <span
+          className={`font-mono text-2xl font-bold ${
+            person.profit >= 0 ? "text-accent" : "text-status-churned"
+          }`}
+        >
+          {formatCurrency(person.profit)}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-secondary">
+        <span>
+          Umsatz <span className="font-mono text-text-bright">{formatCurrency(person.revenueGross)}</span>
+        </span>
+        {person.openReceivables > 0 && (
+          <span>
+            offen <span className="font-mono text-status-lead">{formatCurrency(person.openReceivables)}</span>
+          </span>
+        )}
+      </div>
     </div>
+  );
+}
+
+function OpenTodos({ stats }: { stats: DashboardStats }) {
+  const navigate = useNavigate();
+  const hidden = stats.openTodoCount - stats.openTodos.length;
+
+  return (
+    <div className="glass rounded-2xl p-4 sm:p-5 lg:col-span-2">
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-text-bright">Offene Todos</h2>
+        <Link to="/todos" className="text-xs text-accent hover:underline">
+          {stats.openTodoCount} offen
+        </Link>
+      </div>
+
+      {stats.openTodos.length === 0 ? (
+        <p className="text-xs text-text-secondary">Nichts offen — alles erledigt.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {stats.openTodos.map((todo) => (
+            <li
+              key={todo.id}
+              onClick={() => navigate("/todos")}
+              className="flex cursor-pointer items-center gap-3 rounded-xl bg-white/40 px-4 py-2.5 transition-all hover:bg-white/65"
+            >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLORS[todo.priority]}`} />
+              <span className="min-w-0 flex-1 truncate text-sm text-text-bright">{todo.title}</span>
+
+              {todo.customerName && (
+                <span className="shrink-0 rounded-full bg-status-prospect/15 px-2 py-0.5 text-[10px] font-medium text-status-prospect">
+                  @{todo.customerName}
+                </span>
+              )}
+              {todo.dueDate && <DueDate date={todo.dueDate} />}
+              <span className="shrink-0 text-[11px] text-text-secondary">
+                {todo.createdByUsername}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {hidden > 0 && (
+        <p className="mt-2 text-[11px] text-text-secondary">
+          … und {hidden} weitere
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Überfällige Fristen sollen ins Auge springen, nicht nur dastehen. */
+function DueDate({ date }: { date: string }) {
+  const due = new Date(date);
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86_400_000);
+
+  const label = days < 0 ? "überfällig" : days === 0 ? "heute" : days === 1 ? "morgen" : null;
+  const overdue = days < 0;
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] font-medium ${
+        overdue
+          ? "bg-status-churned/15 text-status-churned"
+          : days <= 1
+            ? "bg-status-lead/15 text-status-lead"
+            : "text-text-secondary"
+      }`}
+    >
+      {label ?? due.toLocaleDateString("de-DE")}
+    </span>
+  );
+}
+
+function Members({
+  presence,
+  currentUserId,
+}: {
+  presence: UserPresence[];
+  currentUserId: string;
+}) {
+  const onlineCount = presence.filter((u) => u.online || u.userId === currentUserId).length;
+
+  return (
+    <div className="glass rounded-2xl p-4 sm:p-5">
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-text-bright">Mitglieder</h2>
+        <span className="text-xs text-text-secondary">{onlineCount} online</span>
+      </div>
+
+      {presence.length === 0 ? (
+        <p className="text-xs text-text-secondary">Noch keine Mitglieder bekannt.</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {presence.map((member) => {
+            // Sich selbst immer als online zeigen: nach einem Reload kann der
+            // REST-Stand vor der WebSocket-Verbindung da sein und würde einen
+            // sonst fälschlich als offline führen.
+            const isOnline = member.online || member.userId === currentUserId;
+            return (
+              <li key={member.userId} className="flex items-center gap-3">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  {isOnline && (
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-customer opacity-75" />
+                  )}
+                  <span
+                    className={`relative inline-flex h-2 w-2 rounded-full ${
+                      isOnline ? "bg-status-customer" : "bg-slate-400"
+                    }`}
+                  />
+                </span>
+                <span className={`text-sm ${isOnline ? "text-text-bright" : "text-text-secondary"}`}>
+                  {member.username}
+                  {member.userId === currentUserId && (
+                    <span className="ml-1.5 text-xs opacity-60">(du)</span>
+                  )}
+                </span>
+                {!isOnline && (
+                  <span className="ml-auto text-[11px] text-text-secondary opacity-70">
+                    {formatRelative(member.lastSeenAt)}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function OpenInvoices({ stats }: { stats: DashboardStats }) {
+  const hidden = stats.openInvoiceCount - stats.openInvoices.length;
+
+  return (
+    <div className="glass rounded-2xl p-4 sm:p-5">
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-text-bright">Unbezahlt</h2>
+        <Link to="/finance" className="font-mono text-xs font-semibold text-status-lead hover:underline">
+          {formatCurrency(stats.openInvoiceTotal)}
+        </Link>
+      </div>
+
+      {stats.openInvoices.length === 0 ? (
+        <p className="text-xs text-text-secondary">Alles bezahlt.</p>
+      ) : (
+        <ul className="space-y-2">
+          {stats.openInvoices.map((invoice) => (
+            <InvoiceRow key={invoice.id} invoice={invoice} />
+          ))}
+        </ul>
+      )}
+
+      {hidden > 0 && (
+        <p className="mt-2 text-[11px] text-text-secondary">… und {hidden} weitere</p>
+      )}
+    </div>
+  );
+}
+
+function InvoiceRow({ invoice }: { invoice: DashboardInvoice }) {
+  const daysOpen = Math.floor(
+    (Date.now() - new Date(invoice.date).getTime()) / 86_400_000,
+  );
+
+  return (
+    <li className="flex items-baseline gap-2">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-text-bright">{invoice.description}</p>
+        <p className="text-[11px] text-text-secondary">
+          {new Date(invoice.date).toLocaleDateString("de-DE")}
+          {daysOpen > 0 ? ` · seit ${daysOpen} Tagen` : ""}
+          {invoice.username ? ` · ${invoice.username}` : ""}
+          {invoice.paid > 0 ? ` · ${formatCurrency(invoice.paid)} angezahlt` : ""}
+        </p>
+      </div>
+      <span className="shrink-0 font-mono text-sm font-semibold text-status-lead">
+        {formatCurrency(invoice.open)}
+      </span>
+    </li>
   );
 }

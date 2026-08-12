@@ -820,9 +820,7 @@ function ThresholdBar({
             überschritten um {formatCurrency(Math.abs(progress.remaining))}
           </span>
         ) : (
-          <>
-            {progress.percent.toFixed(1)} % — noch {formatCurrency(progress.remaining)}
-          </>
+          <>noch {formatCurrency(progress.remaining)}</>
         )}
       </p>
     </div>

@@ -183,6 +183,39 @@ public class FinanceStatsService {
         openEntries.add(row);
     }
 
+    /**
+     * Alle offenen Forderungen, jahresübergreifend — für das Dashboard.
+     *
+     * Bewusst ohne Jahresgrenze: eine Rechnung vom Dezember, die im Januar noch
+     * offen ist, gehört genau dann auf die Startseite.
+     */
+    public List<Map<String, Object>> openReceivables() {
+        List<FinanceEntry> all = repository.findAllByOrderByDateDescCreatedAtDesc();
+        Map<UUID, BigDecimal> paidDeposits = paidDepositsByParent(all);
+
+        List<Map<String, Object>> open = new ArrayList<>();
+        for (FinanceEntry entry : all) {
+            if (!FinanceService.TYPE_INCOME.equals(entry.getType())) continue;
+            if (!FinanceService.STATUS_SENT.equals(entry.getStatus()) || entry.isLinkedDeposit()) continue;
+
+            BigDecimal paid = paidDeposits.getOrDefault(entry.getId(), zero());
+            BigDecimal rest = gross(entry).subtract(paid);
+            if (rest.signum() <= 0) continue;
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", entry.getId().toString());
+            row.put("description", entry.getDescription());
+            row.put("date", entry.getDate().toString());
+            row.put("username", entry.getCreatedByUsername());
+            row.put("customerName", entry.getCustomerName());
+            row.put("gross", gross(entry));
+            row.put("paid", paid);
+            row.put("open", rest);
+            open.add(row);
+        }
+        return open;
+    }
+
     /** Summe der bezahlten Anzahlungen je Rechnung — jahresübergreifend. */
     private Map<UUID, BigDecimal> paidDepositsByParent(List<FinanceEntry> all) {
         Map<UUID, BigDecimal> map = new HashMap<>();

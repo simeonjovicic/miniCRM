@@ -32,6 +32,21 @@ server:
       max: 20
       min-spare: 2
 
+ntfy:
+  # Push-Erinnerungen aufs Handy. Ohne Thema ist der Versand stillgelegt.
+  # Der Themenname ist gleichzeitig das Passwort — lang und zufaellig waehlen
+  # und in der ntfy-App genau so abonnieren.
+  base-url: ${NTFY_BASE_URL:https://ntfy.sh}
+  topic: ${NTFY_TOPIC:}
+
+reminders:
+  # Vorlaufzeiten in Tagen, kommagetrennt
+  days-before: ${REMINDER_DAYS_BEFORE:2,1}
+  # Tageszeit, ab der eine Erinnerung verschickt wird
+  hour: ${REMINDER_HOUR:9}
+  # Wie oft geprueft wird, ob etwas faellig ist (Millisekunden)
+  check-interval-ms: ${REMINDER_CHECK_INTERVAL_MS:900000}
+
 finance:
   # ACHTUNG: Startwerte, keine Rechtsauskunft. Beide Grenzen ändern sich jährlich.
   # Massgeblich ist, was unter Finanzen > Einstellungen eingetragen ist — dort

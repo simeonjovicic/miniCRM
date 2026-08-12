@@ -1,7 +1,9 @@
 import type {
+  Appointment,
   User,
   Customer,
   TodoItem,
+  TodoComment,
   FinanceEntry,
   FinanceKind,
   FinanceSettings,
@@ -57,18 +59,61 @@ export const usersApi = {
 // =====================================================
 // Dashboard API — Aggregierte Statistiken
 // =====================================================
+export interface UserPresence {
+  userId: string;
+  username: string;
+  online: boolean;
+  lastSeenAt: string | null;
+}
+
+export interface DashboardTodo {
+  id: string;
+  title: string;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  dueDate: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  createdByUsername: string | null;
+}
+
+export interface DashboardInvoice {
+  id: string;
+  description: string;
+  date: string;
+  username: string | null;
+  customerName: string | null;
+  gross: number;
+  paid: number;
+  open: number;
+}
+
+export interface DashboardUserProfit {
+  userId: string;
+  username: string;
+  profit: number;
+  revenueGross: number;
+  openReceivables: number;
+}
+
+/**
+ * Die vier Fragen der Startseite: was ist offen, wer ist da, welches Geld steht
+ * aus, und was hat jeder verdient.
+ */
 export interface DashboardStats {
-  totalCustomers: number;
-  leads: number;
-  prospects: number;
-  activeCustomers: number;
-  churned: number;
-  recentCustomers: { id: string; name: string; status: string; createdAt: string }[];
-  onlineUsers: { userId: string; username: string; online: boolean; lastSeenAt: string | null }[];
+  year: number;
+  /** Gekürzt auf die dringendsten — die Gesamtzahl steht in openTodoCount */
+  openTodos: DashboardTodo[];
+  openTodoCount: number;
+  onlineUsers: UserPresence[];
+  openInvoices: DashboardInvoice[];
+  openInvoiceCount: number;
+  openInvoiceTotal: number;
+  perUser: DashboardUserProfit[];
 }
 
 export const dashboardApi = {
-  stats: () => request<DashboardStats>("/dashboard/stats"),
+  stats: (year?: number) =>
+    request<DashboardStats>(`/dashboard/stats${year ? `?year=${year}` : ""}`),
 };
 
 // =====================================================
@@ -104,13 +149,47 @@ export const todosApi = {
       method: "POST",
       body: JSON.stringify(todo),
     }),
-  update: (id: string, todo: Partial<TodoItem>) =>
+  /**
+   * Ersetzt das Todo. Es muss das VOLLSTÄNDIGE Todo gesendet werden — der Server
+   * übernimmt done, Fälligkeit, Notizen und Kundenverknüpfung immer, damit sie
+   * sich entfernen lassen. Ein Teil-Objekt würde den Rest löschen.
+   */
+  update: (id: string, todo: TodoItem) =>
     request<TodoItem>(`/todos/${id}`, {
       method: "PUT",
       body: JSON.stringify(todo),
     }),
   delete: (id: string) =>
     request<void>(`/todos/${id}`, { method: "DELETE" }),
+
+  comments: (todoId: string) =>
+    request<TodoComment[]>(`/todos/${todoId}/comments`),
+  addComment: (todoId: string, comment: Partial<TodoComment>) =>
+    request<TodoComment>(`/todos/${todoId}/comments`, {
+      method: "POST",
+      body: JSON.stringify(comment),
+    }),
+  deleteComment: (todoId: string, commentId: string) =>
+    request<void>(`/todos/${todoId}/comments/${commentId}`, { method: "DELETE" }),
+};
+
+// =====================================================
+// Appointments API — Termine mit Erinnerung
+// =====================================================
+export const appointmentsApi = {
+  list: () => request<Appointment[]>("/appointments"),
+  create: (appointment: Partial<Appointment>) =>
+    request<Appointment>("/appointments", {
+      method: "POST",
+      body: JSON.stringify(appointment),
+    }),
+  update: (id: string, appointment: Partial<Appointment>) =>
+    request<Appointment>(`/appointments/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(appointment),
+    }),
+  delete: (id: string) =>
+    request<void>(`/appointments/${id}`, { method: "DELETE" }),
 };
 
 // =====================================================
