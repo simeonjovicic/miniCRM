@@ -160,6 +160,127 @@ class TodoServiceTest {
         assertThat(result.getCustomerName()).isNull();
     }
 
+    // ── Wiederkehrende Todos ──────────────────────────────────────────
+
+    @Test
+    void abhakenLegtDenNaechstenDurchlaufAn() {
+        UUID id = UUID.randomUUID();
+        Todo monatlich = recurring("UVA einreichen", "MONTHLY", LocalDate.of(2026, 8, 15));
+        when(repository.findById(id)).thenReturn(Optional.of(monatlich));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<Todo> saved = captureSaved(() -> service.update(id, abgehakt(monatlich)));
+
+        Todo nachfolger = saved.stream()
+                .filter(t -> !t.isDone() && t != monatlich)
+                .findFirst().orElseThrow();
+
+        assertThat(nachfolger.getTitle()).isEqualTo("UVA einreichen");
+        assertThat(nachfolger.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 15));
+        assertThat(nachfolger.getRecurrence()).isEqualTo("MONTHLY");
+        assertThat(nachfolger.isDone()).isFalse();
+    }
+
+    @Test
+    void einNichtWiederkehrendesTodoBekommtKeinenNachfolger() {
+        UUID id = UUID.randomUUID();
+        Todo einmalig = todo("Einmalige Sache");
+        einmalig.setDueDate(LocalDate.of(2026, 8, 15));
+        when(repository.findById(id)).thenReturn(Optional.of(einmalig));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<Todo> saved = captureSaved(() -> service.update(id, abgehakt(einmalig)));
+
+        assertThat(saved).hasSize(1);
+    }
+
+    /** Beide Wege — Abhaken und Zeitplan — duerfen zusammen nur einen erzeugen. */
+    @Test
+    void esEntstehtGenauEinNachfolger() {
+        Todo monatlich = recurring("UVA einreichen", "MONTHLY", LocalDate.of(2026, 8, 15));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.spawnNextOccurrence(monatlich)).isPresent();
+        assertThat(service.spawnNextOccurrence(monatlich))
+                .as("beim zweiten Versuch nicht noch einmal")
+                .isEmpty();
+    }
+
+    /**
+     * Bleibt ein wiederkehrendes Todo liegen, muss der naechste Durchlauf
+     * trotzdem kommen — sonst verschluckt eine vergessene UVA die naechste.
+     */
+    @Test
+    void einLiegengebliebenesWiederholtSichTrotzdem() {
+        Todo faellig = recurring("UVA einreichen", "MONTHLY", LocalDate.of(2026, 8, 15));
+        Todo nochNichtFaellig = recurring("SVS", "QUARTERLY", LocalDate.of(2026, 9, 30));
+        when(repository.findAll()).thenReturn(List.of(faellig, nochNichtFaellig));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        int angelegt = service.spawnOverdueRecurrences(LocalDate.of(2026, 8, 20));
+
+        assertThat(angelegt).isEqualTo(1);
+        assertThat(faellig.getRecurrenceSpawned()).isTrue();
+        assertThat(nochNichtFaellig.getRecurrenceSpawned()).isNull();
+    }
+
+    @Test
+    void derNaechsteTerminRichtetSichNachDerAltenFristNichtNachHeute() {
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 8, 15), "DAILY"))
+                .isEqualTo(LocalDate.of(2026, 8, 16));
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 8, 15), "WEEKLY"))
+                .isEqualTo(LocalDate.of(2026, 8, 22));
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 8, 15), "MONTHLY"))
+                .isEqualTo(LocalDate.of(2026, 9, 15));
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 8, 15), "QUARTERLY"))
+                .isEqualTo(LocalDate.of(2026, 11, 15));
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 8, 15), "YEARLY"))
+                .isEqualTo(LocalDate.of(2027, 8, 15));
+    }
+
+    /** Der 31. wird im kuerzeren Monat zum Monatsletzten, nicht zum Ersten danach. */
+    @Test
+    void einMonatsletzterSpringtNichtInDenFolgemonat() {
+        assertThat(TodoService.nextDueDate(LocalDate.of(2026, 1, 31), "MONTHLY"))
+                .isEqualTo(LocalDate.of(2026, 2, 28));
+    }
+
+    @Test
+    void ohneFaelligkeitGibtEsKeineWiederholung() {
+        Todo ohneFrist = recurring("Ohne Datum", "MONTHLY", null);
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.spawnNextOccurrence(ohneFrist)).isEmpty();
+    }
+
+    private static Todo recurring(String title, String recurrence, LocalDate due) {
+        Todo t = todo(title);
+        t.setRecurrence(recurrence);
+        t.setDueDate(due);
+        return t;
+    }
+
+    /** Kopie des Todos mit gesetztem Haken, so wie das Frontend sie schickt. */
+    private static Todo abgehakt(Todo original) {
+        Todo update = new Todo();
+        update.setTitle(original.getTitle());
+        update.setPriority(original.getPriority());
+        update.setDueDate(original.getDueDate());
+        update.setRecurrence(original.getRecurrence());
+        update.setDone(true);
+        return update;
+    }
+
+    private List<Todo> captureSaved(Runnable action) {
+        List<Todo> saved = new java.util.ArrayList<>();
+        when(repository.save(any())).thenAnswer(inv -> {
+            saved.add(inv.getArgument(0));
+            return inv.getArgument(0);
+        });
+        action.run();
+        return saved;
+    }
+
     private static Todo todo(String title) {
         Todo t = new Todo();
         ReflectionTestUtils.setField(t, "id", UUID.randomUUID());

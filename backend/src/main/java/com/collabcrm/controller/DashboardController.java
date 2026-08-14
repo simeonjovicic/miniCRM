@@ -77,6 +77,7 @@ public class DashboardController {
             row.put("dueDate", todo.getDueDate() != null ? todo.getDueDate().toString() : null);
             row.put("customerId", todo.getCustomerId() != null ? todo.getCustomerId().toString() : null);
             row.put("customerName", todo.getCustomerName());
+            row.put("assigneeUsername", todo.getAssigneeUsername());
             row.put("createdByUsername", todo.getCreatedByUsername());
             rows.add(row);
         }

@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { todosApi, customersApi } from "../services/api";
+import { todosApi, customersApi, usersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
 import CustomerMentionInput from "../components/CustomerMentionInput";
 import AppointmentsPanel from "../components/AppointmentsPanel";
-import type { User, TodoItem, TodoComment, Customer } from "../types";
+import ErrorBanner from "../components/ErrorBanner";
+import { RECURRENCE_LABELS } from "../types";
+import type { User, TodoItem, TodoComment, TodoRecurrence, Customer } from "../types";
 
 const PRIORITY_COLORS = {
   HIGH: "bg-[#ff453a]",
@@ -15,7 +17,9 @@ const PRIORITY_COLORS = {
 export default function TodosPage({ user }: { user: User }) {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [filterUser, setFilterUser] = useState<string>("ALL");
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
@@ -26,15 +30,24 @@ export default function TodosPage({ user }: { user: User }) {
   const [tab, setTab] = useState<"TODOS" | "TERMINE">("TODOS");
 
   function reload() {
-    todosApi.list().then(setTodos);
+    todosApi
+      .list()
+      .then((t) => {
+        setTodos(t);
+        setError(null);
+      })
+      .catch((err: Error) => setError(err.message));
   }
 
   useEffect(() => {
-    Promise.all([todosApi.list(), customersApi.list()])
-      .then(([t, c]) => {
+    Promise.all([todosApi.list(), customersApi.list(), usersApi.list()])
+      .then(([t, c, u]) => {
         setTodos(t);
         setCustomers(c);
+        setMembers(u);
+        setError(null);
       })
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -104,15 +117,17 @@ export default function TodosPage({ user }: { user: User }) {
     if (expandedId === id) setExpandedId(null);
   }
 
-  // Unique users for filter
-  const users = Array.from(
-    new Map(
-      todos.map((t) => [t.createdBy, t.createdByUsername ?? t.createdBy]),
-    ),
-  );
-
+  /**
+   * Gefiltert wird nach Zustaendigkeit, nicht nach Ersteller — zu zweit ist
+   * "was ist mein Ball" die interessante Frage. UNASSIGNED sind die, ueber die
+   * noch niemand entschieden hat.
+   */
   const byUser =
-    filterUser === "ALL" ? todos : todos.filter((t) => t.createdBy === filterUser);
+    filterUser === "ALL"
+      ? todos
+      : filterUser === "UNASSIGNED"
+        ? todos.filter((t) => !t.assigneeId)
+        : todos.filter((t) => t.assigneeId === filterUser);
 
   const byPriority =
     filterPriority === "ALL" ? byUser : byUser.filter((t) => t.priority === filterPriority);
@@ -159,6 +174,8 @@ export default function TodosPage({ user }: { user: User }) {
         </div>
       </div>
 
+      <ErrorBanner message={error} onRetry={reload} />
+
       {tab === "TERMINE" && <AppointmentsPanel user={user} customers={customers} />}
 
       {tab === "TODOS" && (
@@ -199,34 +216,32 @@ export default function TodosPage({ user }: { user: User }) {
             ))}
           </div>
 
-          {/* User filter (only when multiple users) */}
-          {users.length > 1 && (
-            <>
+          {/* Zustaendigkeit — wessen Ball ist es */}
+          {members.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Nach Zuständigkeit filtern">
               <span className="text-border">|</span>
-              <button
-                onClick={() => setFilterUser("ALL")}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                  filterUser === "ALL"
-                    ? "bg-accent text-white"
-                    : "glass-chip text-text-secondary hover:text-text-bright"
-                }`}
-              >
-                Alle
-              </button>
-              {users.map(([id, name]) => (
+              {[
+                { key: "ALL", label: "Alle" },
+                { key: user.id, label: "Meine" },
+                ...members
+                  .filter((m) => m.id !== user.id)
+                  .map((m) => ({ key: m.id, label: m.username })),
+                { key: "UNASSIGNED", label: "Offen" },
+              ].map(({ key, label }) => (
                 <button
-                  key={id}
-                  onClick={() => setFilterUser(id)}
+                  key={key}
+                  onClick={() => setFilterUser(key)}
+                  aria-pressed={filterUser === key}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                    filterUser === id
+                    filterUser === key
                       ? "bg-accent text-white"
                       : "glass-chip text-text-secondary hover:text-text-bright"
                   }`}
                 >
-                  {name}
+                  {label}
                 </button>
               ))}
-            </>
+            </div>
           )}
         </div>
 
@@ -245,6 +260,7 @@ export default function TodosPage({ user }: { user: User }) {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 customers={customers}
+                members={members}
                 user={user}
               />
             ))}
@@ -282,6 +298,7 @@ export default function TodosPage({ user }: { user: User }) {
                     onUpdate={handleUpdate}
                     onDelete={handleDelete}
                     customers={customers}
+                    members={members}
                     user={user}
                   />
                 ))}
@@ -304,6 +321,7 @@ function TodoRow({
   onUpdate,
   onDelete,
   customers,
+  members,
   user,
 }: {
   todo: TodoItem;
@@ -313,6 +331,7 @@ function TodoRow({
   onUpdate: (id: string, changes: Partial<TodoItem>) => void;
   onDelete: (id: string) => void;
   customers: Customer[];
+  members: User[];
   user: User;
 }) {
   return (
@@ -357,6 +376,24 @@ function TodoRow({
           )}
         </button>
 
+        {todo.assigneeUsername && (
+          <span
+            title="Zuständig"
+            className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent"
+          >
+            → {todo.assigneeUsername}
+          </span>
+        )}
+
+        {todo.recurrence && todo.recurrence !== "NONE" && (
+          <span
+            title="Wiederkehrend — der nächste Durchlauf entsteht automatisch"
+            className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent"
+          >
+            ↻ {RECURRENCE_LABELS[todo.recurrence]}
+          </span>
+        )}
+
         {todo.customerId && todo.customerName && (
           <Link
             to={`/customers/${todo.customerId}`}
@@ -387,6 +424,7 @@ function TodoRow({
         <TodoDetail
           todo={todo}
           user={user}
+          members={members}
           customerNames={customers.map((c) => c.name)}
           onUpdate={(changes) => onUpdate(todo.id, changes)}
           onDelete={() => onDelete(todo.id)}
@@ -436,12 +474,14 @@ function HighlightMentions({
 function TodoDetail({
   todo,
   user,
+  members,
   customerNames,
   onUpdate,
   onDelete,
 }: {
   todo: TodoItem;
   user: User;
+  members: User[];
   customerNames: string[];
   onUpdate: (changes: Partial<TodoItem>) => void;
   onDelete: () => void;
@@ -451,6 +491,7 @@ function TodoDetail({
   const [priority, setPriority] = useState(todo.priority);
   const [dueDate, setDueDate] = useState(todo.dueDate ?? "");
   const [notes, setNotes] = useState(todo.notes ?? "");
+  const [recurrence, setRecurrence] = useState<TodoRecurrence>(todo.recurrence ?? "NONE");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   function save(changes: Partial<TodoItem>) {
@@ -479,6 +520,28 @@ function TodoDetail({
             </p>
           )}
         </div>
+        <div className="col-span-2">
+          <label className="mb-1 block text-xs font-medium text-text-secondary">Zuständig</label>
+          <select
+            value={todo.assigneeId ?? ""}
+            onChange={(e) => {
+              const member = members.find((m) => m.id === e.target.value);
+              onUpdate({
+                assigneeId: member?.id,
+                assigneeUsername: member?.username,
+              });
+            }}
+            aria-label="Zuständig"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none transition-all focus:ring-2 focus:ring-accent/20"
+          >
+            <option value="">— niemand —</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id === user.id ? `${m.username} (du)` : m.username}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-text-secondary">Priorität</label>
           <select
@@ -488,6 +551,7 @@ function TodoDetail({
               setPriority(v);
               onUpdate({ priority: v });
             }}
+            aria-label="Priorität"
             className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           >
             <option value="LOW">Niedrig</option>
@@ -506,6 +570,30 @@ function TodoDetail({
             }}
             className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           />
+        </div>
+        <div className="col-span-2">
+          <label className="mb-1 block text-xs font-medium text-text-secondary">Wiederholung</label>
+          <select
+            value={recurrence}
+            onChange={(e) => {
+              const value = e.target.value as TodoRecurrence;
+              setRecurrence(value);
+              onUpdate({ recurrence: value });
+            }}
+            aria-label="Wiederholung"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+          >
+            {(Object.keys(RECURRENCE_LABELS) as TodoRecurrence[]).map((r) => (
+              <option key={r} value={r}>{RECURRENCE_LABELS[r]}</option>
+            ))}
+          </select>
+          {recurrence !== "NONE" && (
+            <p className="mt-1 text-[11px] text-text-secondary">
+              {dueDate
+                ? "Beim Abhaken entsteht der nächste Durchlauf automatisch. Bleibt es liegen, kommt er nach Ablauf der Frist."
+                : "Braucht ein Fälligkeitsdatum — sonst gibt es keinen nächsten Termin."}
+            </p>
+          )}
         </div>
         <div className="col-span-2">
           <label className="mb-1 block text-xs font-medium text-text-secondary">Notizen</label>

@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { timeEntriesApi } from "../services/api";
 import { subscribe } from "../services/websocket";
+import ErrorBanner from "../components/ErrorBanner";
 import type { TimeEntry, User } from "../types";
 
 type Period = "week" | "month" | "all";
@@ -57,6 +58,7 @@ function isoDate(date: Date): string {
 export default function TimerPage({ user }: { user: User }) {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("week");
   const [filterUser, setFilterUser] = useState<string>("ALL");
 
@@ -65,10 +67,14 @@ export default function TimerPage({ user }: { user: User }) {
   }, []);
 
   useEffect(() => {
-    timeEntriesApi.list().then((e) => {
-      setEntries(e);
-      setLoading(false);
-    });
+    timeEntriesApi
+      .list()
+      .then((e) => {
+        setEntries(e);
+        setLoadError(null);
+      })
+      .catch((err: Error) => setLoadError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -229,6 +235,7 @@ export default function TimerPage({ user }: { user: User }) {
   return (
     <div>
       <h1 className="mb-6 text-xl font-bold text-text-bright">Zeiterfassung</h1>
+      <ErrorBanner message={loadError} />
 
       {/* Stat cards */}
       <div className="mb-6 grid grid-cols-3 gap-2 sm:gap-3">

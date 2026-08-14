@@ -9,6 +9,7 @@ import {
   type UserPresence,
 } from "../services/api";
 import { subscribe } from "../services/websocket";
+import ErrorBanner from "../components/ErrorBanner";
 import type { User } from "../types";
 
 const PRIORITY_COLORS: Record<DashboardTodo["priority"], string> = {
@@ -35,12 +36,17 @@ function formatCurrency(value: number): string {
 export default function DashboardPage({ user }: { user: User }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [presence, setPresence] = useState<UserPresence[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
-    dashboardApi.stats().then((data) => {
-      setStats(data);
-      setPresence(data.onlineUsers);
-    });
+    dashboardApi
+      .stats()
+      .then((data) => {
+        setStats(data);
+        setPresence(data.onlineUsers);
+        setError(null);
+      })
+      .catch((err: Error) => setError(err.message));
   }, []);
 
   useEffect(() => reload(), [reload]);
@@ -66,7 +72,15 @@ export default function DashboardPage({ user }: { user: User }) {
     };
   }, [reload]);
 
-  if (!stats) return <p className="text-sm text-text-secondary">Lade Dashboard...</p>;
+  if (!stats) {
+    return (
+      <div>
+        <h1 className="mb-6 text-xl font-bold text-text-bright">Dashboard</h1>
+        <ErrorBanner message={error} onRetry={reload} />
+        {!error && <p className="text-sm text-text-secondary">Lade Dashboard...</p>}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -74,6 +88,8 @@ export default function DashboardPage({ user }: { user: User }) {
         <h1 className="text-xl font-bold text-text-bright">Dashboard</h1>
         <span className="text-xs text-text-secondary">Gewinn im Jahr {stats.year}</span>
       </div>
+
+      <ErrorBanner message={error} onRetry={reload} />
 
       {/* Gewinn je Person */}
       <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">

@@ -18,6 +18,23 @@ export interface Customer {
   createdAt: string;
 }
 
+export type TodoRecurrence =
+  | "NONE"
+  | "DAILY"
+  | "WEEKLY"
+  | "MONTHLY"
+  | "QUARTERLY"
+  | "YEARLY";
+
+export const RECURRENCE_LABELS: Record<TodoRecurrence, string> = {
+  NONE: "einmalig",
+  DAILY: "täglich",
+  WEEKLY: "wöchentlich",
+  MONTHLY: "monatlich",
+  QUARTERLY: "vierteljährlich",
+  YEARLY: "jährlich",
+};
+
 export interface TodoItem {
   id: string;
   title: string;
@@ -28,6 +45,18 @@ export interface TodoItem {
   /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel */
   customerId?: string;
   customerName?: string;
+  /**
+   * Wiederholung. Braucht ein Fälligkeitsdatum — daraus wird der nächste
+   * Termin berechnet. Der Nachfolger entsteht beim Abhaken oder, wenn das
+   * Todo liegen bleibt, nach Ablauf der Frist.
+   */
+  recurrence?: TodoRecurrence;
+  /**
+   * Wer es machen soll — im Unterschied zu createdBy, wer es aufgeschrieben hat.
+   * Nicht gesetzt heisst: noch niemandem zugewiesen.
+   */
+  assigneeId?: string;
+  assigneeUsername?: string;
   /** Anzahl der Kommentare — kommt aus der Liste, wird nicht gespeichert */
   commentCount: number;
   createdBy: string;

@@ -17,6 +17,8 @@ ntfy:
 reminders:
   days-before: 2,1
   hour: 9
+  digest-enabled: true
+  digest-hour: 8
   # Im Test nicht von selbst loslaufen
   check-interval-ms: 3600000
 
@@ -25,3 +27,12 @@ finance:
     svs: 6613.20
     small-business: 55000
   split-basis: GROSS
+
+# StorageService braucht diese Werte beim Hochfahren — ohne sie laesst sich der
+# vollstaendige Kontext im Test nicht laden.
+smb:
+  host: localhost
+  share: test
+  base-path: test
+  username: ""
+  password: ""

@@ -18,8 +18,15 @@ import java.math.BigDecimal;
 @Table(name = "finance_settings")
 public class FinanceSettings {
 
-    /** Kalenderjahr, für das diese Werte gelten */
+    /**
+     * Kalenderjahr, für das diese Werte gelten.
+     *
+     * Die Spalte heisst bewusst nicht "year": das ist in H2 ein reserviertes
+     * Wort, wodurch sich die Tabelle dort nicht anlegen liess. PostgreSQL
+     * verkraftet es, aber die Tests laufen gegen H2.
+     */
     @Id
+    @Column(name = "fiscal_year")
     private Integer year;
 
     /**

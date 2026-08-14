@@ -16,6 +16,12 @@ import type {
 const BASE = "/api";
 
 /**
+ * Wird ausgelöst, sobald das Backend eine Anfrage mit 401 ablehnt — die Sitzung
+ * ist dann abgelaufen. App horcht darauf und schickt zurück zur Anmeldung.
+ */
+export const SESSION_EXPIRED = "minicrm:session-expired";
+
+/**
  * Generische HTTP-Request-Funktion.
  * Wirft einen Error bei nicht-OK Status Codes.
  * Bei 204 (No Content, z.B. nach DELETE) wird undefined zurückgegeben.
@@ -26,6 +32,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
+    // Eine abgelaufene Sitzung ist kein Seitenfehler — dann gehört man zurück
+    // zur Anmeldung, statt auf jeder Seite "401 Unauthorized" zu lesen.
+    // Die Auth-Endpunkte sind ausgenommen, die prüfen selbst auf 401.
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED));
+    }
+
     // Fachliche Fehler kommen als {"error": "..."} und sollen dem User im
     // Klartext angezeigt werden statt als nackter Statuscode.
     let message = `${res.status} ${res.statusText}`;
@@ -42,6 +55,56 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (!text) return undefined as T;
   return JSON.parse(text);
 }
+
+// =====================================================
+// Auth API — Anmeldung über eine Server-Session
+// =====================================================
+
+/** Was der Anmeldebildschirm über einen Benutzer wissen muss — mehr nicht. */
+export interface LoginCandidate {
+  username: string;
+  hasPassword: boolean;
+}
+
+export const authApi = {
+  /** Auswahl für den Anmeldebildschirm. Ohne Anmeldung erreichbar. */
+  candidates: () => request<LoginCandidate[]>("/auth/users"),
+  login: (username: string, password: string) =>
+    request<User>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  /** Erstes Passwort festlegen — geht nur, solange keines gesetzt ist. */
+  setPassword: (username: string, password: string) =>
+    request<User>("/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  /** Allerersten Benutzer anlegen — geht nur, solange es gar keinen gibt. */
+  bootstrap: (username: string, email: string, password: string) =>
+    request<User>("/auth/bootstrap", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password }),
+    }),
+  /** Passwort ändern — braucht das aktuelle, die Sitzung bleibt bestehen. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<User>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  /**
+   * Der angemeldete Benutzer, oder null wenn keine Sitzung besteht.
+   * Damit stellt die Oberfläche beim Start eine bestehende Anmeldung wieder her.
+   */
+  me: async (): Promise<User | null> => {
+    try {
+      return await request<User>("/auth/me");
+    } catch {
+      return null;
+    }
+  },
+};
 
 // =====================================================
 // User API — Benutzerverwaltung

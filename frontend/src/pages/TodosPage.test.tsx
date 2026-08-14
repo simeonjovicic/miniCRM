@@ -42,6 +42,7 @@ function mockTodos(overrides: Record<string, unknown> = {}) {
     "/todos/t-1/comments": [],
     "/todos": [todo],
     "/customers": [testCustomer],
+    "/users": [testUser, testUser2],
     ...overrides,
   });
 }
@@ -116,8 +117,9 @@ describe("TodosPage", () => {
 
     await userEvent.click(screen.getByText("Angebot rausschicken"));
 
-    expect(await screen.findByText("hab die Zahlen geschickt")).toBeInTheDocument();
-    expect(screen.getByText(testUser2.username)).toBeInTheDocument();
+    const wortmeldung = (await screen.findByText("hab die Zahlen geschickt")).closest("li")!;
+    // Auf den Kommentar eingegrenzt — "bob" steht jetzt auch als Filter-Chip da
+    expect(within(wortmeldung).getByText(testUser2.username)).toBeInTheDocument();
     expect(commentCalls()).toBe(1);
   });
 
@@ -185,6 +187,191 @@ describe("TodosPage", () => {
     expect(screen.getAllByRole("button", { name: "Kommentar löschen" })).toHaveLength(1);
   });
 
+  // ── Zuständigkeit ───────────────────────────────────────────────
+
+  it("zeigt am Todo, wer zuständig ist", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [{ ...todo, assigneeId: testUser2.id, assigneeUsername: testUser2.username }],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    expect(await screen.findByText(`→ ${testUser2.username}`)).toBeInTheDocument();
+  });
+
+  it("zeigt kein Abzeichen ohne Zuständigen", async () => {
+    ({ restore } = mockTodos());
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await screen.findByText("Angebot rausschicken");
+    expect(screen.queryByText(/^→/)).not.toBeInTheDocument();
+  });
+
+  it("filtert nach Zuständigkeit statt nach Ersteller", async () => {
+    const meins: TodoItem = {
+      ...todo,
+      id: "t-mein",
+      title: "Mein Ball",
+      assigneeId: testUser.id,
+      assigneeUsername: testUser.username,
+    };
+    const seins: TodoItem = {
+      ...todo,
+      id: "t-sein",
+      title: "Bobs Ball",
+      assigneeId: testUser2.id,
+      assigneeUsername: testUser2.username,
+    };
+    const offen: TodoItem = { ...todo, id: "t-offen", title: "Niemandem zugewiesen" };
+
+    ({ restore } = mockTodos({ "/todos": [meins, seins, offen] }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    const filter = within(await screen.findByRole("group", { name: "Nach Zuständigkeit filtern" }));
+
+    await userEvent.click(filter.getByRole("button", { name: "Meine" }));
+    expect(screen.getByText("Mein Ball")).toBeInTheDocument();
+    expect(screen.queryByText("Bobs Ball")).not.toBeInTheDocument();
+
+    await userEvent.click(filter.getByRole("button", { name: testUser2.username }));
+    expect(screen.getByText("Bobs Ball")).toBeInTheDocument();
+    expect(screen.queryByText("Mein Ball")).not.toBeInTheDocument();
+
+    // "Offen" sind die, ueber die noch niemand entschieden hat
+    await userEvent.click(filter.getByRole("button", { name: "Offen" }));
+    expect(screen.getByText("Niemandem zugewiesen")).toBeInTheDocument();
+    expect(screen.queryByText("Bobs Ball")).not.toBeInTheDocument();
+
+    await userEvent.click(filter.getByRole("button", { name: "Alle" }));
+    expect(screen.getByText("Mein Ball")).toBeInTheDocument();
+    expect(screen.getByText("Bobs Ball")).toBeInTheDocument();
+    expect(screen.getByText("Niemandem zugewiesen")).toBeInTheDocument();
+  });
+
+  it("lässt die Zuständigkeit im Detail setzen", async () => {
+    const base = mockTodos();
+    const passthrough = globalThis.fetch;
+    restore = base.restore;
+
+    const puts: Record<string, unknown>[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        puts.push(body);
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return passthrough(input, init);
+    }) as unknown as typeof fetch;
+
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+    await userEvent.selectOptions(await screen.findByLabelText("Zuständig"), testUser2.id);
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toMatchObject({
+      assigneeId: testUser2.id,
+      assigneeUsername: testUser2.username,
+    });
+  });
+
+  it("lässt die Zuständigkeit wieder entfernen", async () => {
+    const base = mockTodos({
+      "/todos": [{ ...todo, assigneeId: testUser2.id, assigneeUsername: testUser2.username }],
+    });
+    const passthrough = globalThis.fetch;
+    restore = base.restore;
+
+    const puts: Record<string, unknown>[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        puts.push(JSON.parse(String(init.body)));
+        return Promise.resolve(
+          new Response(String(init.body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return passthrough(input, init);
+    }) as unknown as typeof fetch;
+
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+    await userEvent.selectOptions(await screen.findByLabelText("Zuständig"), "");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].assigneeId).toBeUndefined();
+  });
+
+  // ── Wiederkehrende Todos ────────────────────────────────────────
+
+  it("kennzeichnet wiederkehrende Todos in der Liste", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [{ ...todo, recurrence: "MONTHLY" as const, dueDate: "2026-08-15" }],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    expect(await screen.findByText("↻ monatlich")).toBeInTheDocument();
+  });
+
+  it("zeigt kein Abzeichen bei einmaligen Todos", async () => {
+    ({ restore } = mockTodos());
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await screen.findByText("Angebot rausschicken");
+    expect(screen.queryByText(/↻/)).not.toBeInTheDocument();
+  });
+
+  it("lässt die Wiederholung im Detail einstellen", async () => {
+    const base = mockTodos({ "/todos": [{ ...todo, dueDate: "2026-08-15" }] });
+    const passthrough = globalThis.fetch;
+    restore = base.restore;
+
+    const puts: Record<string, unknown>[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        puts.push(body);
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return passthrough(input, init);
+    }) as unknown as typeof fetch;
+
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+    await userEvent.selectOptions(await screen.findByLabelText("Wiederholung"), "MONTHLY");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toMatchObject({ recurrence: "MONTHLY", dueDate: "2026-08-15" });
+  });
+
+  /** Ohne Frist gibt es keinen naechsten Termin — das muss dranstehen. */
+  it("weist darauf hin, dass eine Wiederholung ein Datum braucht", async () => {
+    ({ restore } = mockTodos({ "/todos": [{ ...todo, dueDate: null }] }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+    await userEvent.selectOptions(await screen.findByLabelText("Wiederholung"), "MONTHLY");
+
+    expect(await screen.findByText(/Braucht ein Fälligkeitsdatum/)).toBeInTheDocument();
+  });
+
   // ── Update-Semantik ─────────────────────────────────────────────
 
   /**
@@ -223,11 +410,8 @@ describe("TodosPage", () => {
     await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
     await userEvent.click(screen.getByText("Angebot rausschicken"));
 
-    const detail = await screen.findByDisplayValue("Angebot rausschicken");
-    await userEvent.selectOptions(
-      within(detail.closest("div")!.parentElement!).getByRole("combobox"),
-      "HIGH",
-    );
+    await screen.findByDisplayValue("Angebot rausschicken");
+    await userEvent.selectOptions(screen.getByLabelText("Priorität"), "HIGH");
 
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toMatchObject({

@@ -36,6 +36,24 @@ public class Todo extends AbstractPersistable<UUID> {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    /**
+     * Wiederholung: NONE, DAILY, WEEKLY, MONTHLY, QUARTERLY oder YEARLY.
+     *
+     * Ein wiederkehrendes Todo braucht ein Fälligkeitsdatum — daraus wird der
+     * nächste Termin berechnet. Gerechnet wird immer ab dem alten Fälligkeitstag
+     * und nicht ab heute, sonst wandert ein monatlicher Termin mit jeder
+     * verspäteten Erledigung nach hinten.
+     */
+    @Column(length = 20)
+    private String recurrence;
+
+    /**
+     * Ob der Nachfolger schon angelegt wurde. Sorgt dafür, dass es bei genau
+     * einem bleibt — egal ob er beim Abhaken oder vom Zeitplan erzeugt wird.
+     */
+    @Column
+    private Boolean recurrenceSpawned;
+
     /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel. */
     @Column
     private UUID customerId;
@@ -50,6 +68,17 @@ public class Todo extends AbstractPersistable<UUID> {
      */
     @Transient
     private int commentCount;
+
+    /**
+     * Wer es machen soll — im Unterschied zu {@link #createdBy}, wer es
+     * aufgeschrieben hat. Zu zweit ist das die eigentlich interessante Angabe.
+     * null heisst: noch niemandem zugewiesen.
+     */
+    @Column
+    private UUID assigneeId;
+
+    /** Name der zuständigen Person für die Anzeige ohne zusätzliche Abfrage */
+    private String assigneeUsername;
 
     /** Welcher User dieses Todo erstellt hat */
     @NotNull
@@ -83,6 +112,12 @@ public class Todo extends AbstractPersistable<UUID> {
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
+    public String getRecurrence() { return recurrence; }
+    public void setRecurrence(String recurrence) { this.recurrence = recurrence; }
+
+    public Boolean getRecurrenceSpawned() { return recurrenceSpawned; }
+    public void setRecurrenceSpawned(Boolean v) { this.recurrenceSpawned = v; }
+
     public UUID getCustomerId() { return customerId; }
     public void setCustomerId(UUID customerId) { this.customerId = customerId; }
 
@@ -91,6 +126,12 @@ public class Todo extends AbstractPersistable<UUID> {
 
     public int getCommentCount() { return commentCount; }
     public void setCommentCount(int commentCount) { this.commentCount = commentCount; }
+
+    public UUID getAssigneeId() { return assigneeId; }
+    public void setAssigneeId(UUID assigneeId) { this.assigneeId = assigneeId; }
+
+    public String getAssigneeUsername() { return assigneeUsername; }
+    public void setAssigneeUsername(String assigneeUsername) { this.assigneeUsername = assigneeUsername; }
 
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }

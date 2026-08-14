@@ -22,7 +22,9 @@ import SyncStatusBadge from "./components/SyncStatusBadge";
 import TimerWidget from "./components/TimerWidget";
 import { ToastProvider, useToast } from "./components/Toast";
 import SearchModal from "./components/SearchModal";
+import ChangePasswordDialog from "./components/ChangePasswordDialog";
 import { connect, subscribe } from "./services/websocket";
+import { authApi, SESSION_EXPIRED } from "./services/api";
 import { TimerProvider } from "./context/TimerContext";
 
 const NAV_ITEMS = [
@@ -108,11 +110,50 @@ function navClass({ isActive }: { isActive: boolean }) {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  /**
+   * Solange offen ist, ob eine Sitzung besteht, darf weder die Anwendung noch
+   * der Anmeldebildschirm erscheinen — sonst blitzt beim Neuladen kurz die
+   * Anmeldung auf, obwohl man längst angemeldet ist.
+   */
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    authApi
+      .me()
+      .then(setUser)
+      .finally(() => setCheckingSession(false));
+  }, []);
 
   const connectedUserRef = useRef<string | null>(null);
+
+  // Läuft die Sitzung ab, meldet der API-Client das zentral — dann zurück zur
+  // Anmeldung, statt auf jeder Seite einen 401 anzuzeigen.
+  useEffect(() => {
+    function handleExpired() {
+      connectedUserRef.current = null;
+      setUser(null);
+    }
+    window.addEventListener(SESSION_EXPIRED, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED, handleExpired);
+  }, []);
+
   if (user && connectedUserRef.current !== user.id) {
     connect({ userId: user.id, username: user.username });
     connectedUserRef.current = user.id;
+  }
+
+  async function handleLogout() {
+    await authApi.logout().catch(() => undefined);
+    connectedUserRef.current = null;
+    setUser(null);
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <p className="text-sm text-text-secondary">Lade...</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -129,7 +170,7 @@ export default function App() {
     <BrowserRouter>
       <ToastProvider>
         <TimerProvider user={user}>
-          <AppShell user={user} onLogout={() => setUser(null)} />
+          <AppShell user={user} onLogout={handleLogout} />
         </TimerProvider>
       </ToastProvider>
     </BrowserRouter>
@@ -212,12 +253,14 @@ function MobileMoreSheet({
   user,
   onLogout,
   onSearch,
+  onChangePassword,
 }: {
   open: boolean;
   onClose: () => void;
   user: User;
   onLogout: () => void;
   onSearch: () => void;
+  onChangePassword: () => void;
 }) {
   const location = useLocation();
 
@@ -263,12 +306,20 @@ function MobileMoreSheet({
               <SyncStatusBadge />
             </div>
           </div>
-          <button
-            onClick={() => { onClose(); onLogout(); }}
-            className="rounded-xl px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { onClose(); onChangePassword(); }}
+              className="rounded-xl px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
+            >
+              Passwort
+            </button>
+            <button
+              onClick={() => { onClose(); onLogout(); }}
+              className="rounded-xl px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* Search shortcut */}
@@ -370,6 +421,7 @@ function AppShell({
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const { show } = useToast();
   const location = useLocation();
 
@@ -457,12 +509,17 @@ function AppShell({
 
             <SyncStatusBadge />
 
-            <div className="flex items-center gap-2 glass-chip rounded-full px-3 py-1.5">
+            <button
+              onClick={() => setPasswordOpen(true)}
+              title="Passwort ändern"
+              aria-label={`${user.username} — Passwort ändern`}
+              className="flex items-center gap-2 glass-chip rounded-full px-3 py-1.5 transition-all hover:brightness-95"
+            >
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white shadow-sm shadow-accent/30">
                 {user.username[0].toUpperCase()}
               </div>
               <span className="text-[13px] font-medium text-text-bright">{user.username}</span>
-            </div>
+            </button>
 
             <button
               onClick={onLogout}
@@ -526,9 +583,12 @@ function AppShell({
         user={user}
         onLogout={onLogout}
         onSearch={() => setSearchOpen(true)}
+        onChangePassword={() => setPasswordOpen(true)}
       />
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </div>
   );
 }

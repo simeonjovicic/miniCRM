@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { customersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
+import ErrorBanner from "../components/ErrorBanner";
 import type { Customer, User } from "../types";
 import CustomerStatusBadge from "../components/CustomerStatusBadge";
 
@@ -10,6 +11,7 @@ export default function CustomerListPage({ user }: { user: User }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCompany, setNewCompany] = useState("");
@@ -17,7 +19,16 @@ export default function CustomerListPage({ user }: { user: User }) {
 
   const reload = useCallback(() => { customersApi.list().then(setCustomers); }, []);
 
-  useEffect(() => { customersApi.list().then(setCustomers).finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    customersApi
+      .list()
+      .then((c) => {
+        setCustomers(c);
+        setError(null);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
@@ -49,6 +60,7 @@ export default function CustomerListPage({ user }: { user: User }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-text-bright">Kunden</h1>
+      <ErrorBanner message={error} />
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="btn-shimmer rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] transition-all"

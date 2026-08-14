@@ -27,6 +27,15 @@ spring:
 
 server:
   port: 8080
+  servlet:
+    session:
+      # Verhindert, dass der Browser das Cookie bei Anfragen von fremden Seiten
+      # mitschickt — damit entfaellt der Angriffsweg, gegen den CSRF-Token schuetzen.
+      cookie:
+        same-site: strict
+        http-only: true
+      # Nach zwei Wochen ohne Nutzung neu anmelden
+      timeout: 14d
   tomcat:
     threads:
       max: 20
@@ -44,6 +53,9 @@ reminders:
   days-before: ${REMINDER_DAYS_BEFORE:2,1}
   # Tageszeit, ab der eine Erinnerung verschickt wird
   hour: ${REMINDER_HOUR:9}
+  # Taegliche Morgen-Uebersicht: eine Nachricht mit allem, was ansteht
+  digest-enabled: ${REMINDER_DIGEST_ENABLED:true}
+  digest-hour: ${REMINDER_DIGEST_HOUR:8}
   # Wie oft geprueft wird, ob etwas faellig ist (Millisekunden)
   check-interval-ms: ${REMINDER_CHECK_INTERVAL_MS:900000}
 

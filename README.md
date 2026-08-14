@@ -49,6 +49,44 @@ simply be unavailable.
 
 ---
 
+## Anmeldung
+
+Alle Endpunkte unter `/api` und `/ws` sind geschützt. Angemeldet wird per
+Benutzername und Passwort; der Zustand liegt in einer Server-Session
+(`HttpOnly`, `SameSite=Strict`), nicht im Browser-Speicher. Dadurch übersteht
+die Anmeldung ein Neuladen, und CSRF-Token sind nicht nötig — das Cookie geht
+bei Anfragen von fremden Seiten gar nicht erst raus.
+
+### Erstes Passwort
+
+Benutzer aus der Zeit vor der Anmeldung haben noch keines. Beim Aufrufen steht
+neben dem Namen **„Passwort fehlt"** — einmal anklicken, Passwort festlegen
+(mindestens 8 Zeichen), fertig. Danach ist dieser Weg für den Benutzer zu.
+
+Gibt es überhaupt keinen Benutzer, legt der Anmeldebildschirm den ersten an.
+Auch dieser Weg schließt sich, sobald einer existiert.
+
+### Passwort ändern
+
+Angemeldet auf den eigenen Namen oben rechts klicken (mobil: Mehr → Passwort).
+Das aktuelle Passwort wird mit abgefragt, die Sitzung bleibt bestehen.
+
+### Passwort vergessen
+
+Es gibt bewusst keinen Selbstbedienungs-Weg — bei zwei Leuten wäre eine
+Zurücksetzen-Funktion mehr Angriffsfläche als Nutzen. Stattdessen auf dem Pi
+den Hash leeren, danach greift wieder „Passwort festlegen":
+
+```bash
+docker exec -it minicrm-postgres \
+  psql -U minicrm -d minicrm -c "UPDATE users SET password_hash = NULL WHERE username = 'simeon';"
+```
+
+> Weitere Benutzer lassen sich derzeit nur über die Datenbank anlegen — eine
+> Benutzerverwaltung in der Oberfläche gibt es noch nicht.
+
+---
+
 ## Termin-Erinnerungen (Push aufs Handy)
 
 Der Server prüft alle 15 Minuten, ob eine Erinnerung fällig ist, und schickt sie

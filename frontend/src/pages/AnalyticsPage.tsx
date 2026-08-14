@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { customersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
+import ErrorBanner from "../components/ErrorBanner";
 import type { Customer } from "../types";
 
 type Status = Customer["status"];
@@ -29,13 +30,21 @@ const STATUS_TEXT: Record<Status, string> = {
 export default function AnalyticsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   function reload() {
     customersApi.list().then(setCustomers);
   }
 
   useEffect(() => {
-    customersApi.list().then(setCustomers).finally(() => setLoading(false));
+    customersApi
+      .list()
+      .then((c) => {
+        setCustomers(c);
+        setError(null);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -86,6 +95,7 @@ export default function AnalyticsPage() {
   return (
     <div>
       <h1 className="mb-6 text-xl font-bold text-text-bright">Analyse</h1>
+      <ErrorBanner message={error} />
 
       {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-2 gap-2 sm:mb-8 sm:gap-4 sm:grid-cols-4">
