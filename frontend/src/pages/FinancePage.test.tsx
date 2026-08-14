@@ -137,7 +137,12 @@ async function ohneAufteilung() {
 describe("FinancePage", () => {
   let restore: () => void;
 
-  afterEach(() => restore?.());
+  afterEach(() => {
+    restore?.();
+    // Die Wahl "Alle Buchungen" überlebt absichtlich den Seitenwechsel — im Test
+    // darf sie nicht in den nächsten Fall durchschlagen.
+    localStorage.clear();
+  });
 
   it("zeigt die Kennzahlen des Jahres", async () => {
     ({ restore } = mockFinance());
@@ -792,9 +797,11 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance({ "/finance": [rechnung, anzahlung] }));
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getAllByText("Anzahlung Website").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
 
+    // Die Anzahlung hängt unter ihrer Schlussrechnung und kommt erst beim Aufklappen
     const table = within(screen.getByRole("table"));
+    await userEvent.click(table.getByRole("button", { name: /Buchungen zu Projekt Website/ }));
     await userEvent.click(table.getByRole("button", { name: /Anzahlung Website bearbeiten/ }));
 
     expect(screen.getByLabelText("Status")).toHaveValue("DEPOSIT");
@@ -858,7 +865,10 @@ describe("FinancePage", () => {
     const table = within(screen.getByRole("table"));
     // 600 von 1.200 — der Prozentsatz kommt aus den Beträgen, nicht aus einer Konstante
     expect(table.getByText(`davon 50 % an ${testUser2.username}`)).toBeInTheDocument();
-    // Die Gegenbuchung ist selbst der Anteil und behält ihre eigene Beschriftung
+
+    // Die Gegenbuchung ist die Innenansicht der Rechnung und hängt darunter
+    await userEvent.click(table.getByRole("button", { name: /Buchungen zu Geteiltes Projekt/ }));
+    // Sie ist selbst der Anteil und behält ihre eigene Beschriftung
     expect(table.getByText(`Anteil an ${testUser2.username}`)).toBeInTheDocument();
   });
 
@@ -957,6 +967,175 @@ describe("FinancePage", () => {
     renderWithRouter(<FinancePage user={testUser} />);
 
     await waitFor(() => expect(screen.getByText("Offene Posten")).toBeInTheDocument());
+  });
+
+  // ── Vorgänge ────────────────────────────────────────────────────
+
+  /** Eine geteilte Einnahme, wie sie der Server anlegt: drei Buchungen, eine Klammer. */
+  const kundenrechnung: FinanceEntry = {
+    ...rechnung,
+    id: "s-1",
+    description: "Projekt Website",
+    splitGroupId: "g-1",
+    splitRole: "ORIGIN",
+    splitPartnerUsername: testUser2.username,
+  };
+  const anteilPartner: FinanceEntry = {
+    ...rechnung,
+    id: "s-2",
+    amount: 600,
+    netAmount: 500,
+    vatAmount: 100,
+    description: "Projekt Website — Anteil von admin",
+    splitGroupId: "g-1",
+    splitRole: "SHARE_IN",
+    splitPartnerUsername: testUser.username,
+    createdBy: testUser2.id,
+    createdByUsername: testUser2.username,
+  };
+  const gegenbuchung: FinanceEntry = {
+    ...rechnung,
+    id: "s-3",
+    type: "EXPENSE",
+    amount: 600,
+    netAmount: 500,
+    vatAmount: 100,
+    description: "Projekt Website — Anteil an bob",
+    splitGroupId: "g-1",
+    splitRole: "SHARE_OUT",
+    splitPartnerUsername: testUser2.username,
+  };
+
+  const aufteilung = [kundenrechnung, anteilPartner, gegenbuchung];
+
+  it("fasst die drei Buchungen einer Aufteilung zu einer Zeile zusammen", async () => {
+    ({ restore } = mockFinance({ "/finance": aufteilung }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = () => within(screen.getByRole("table"));
+    // Eine gestellte Rechnung ist eine Zeile, nicht drei
+    expect(table().getAllByRole("row")).toHaveLength(2); // Kopfzeile + Kundenrechnung
+    expect(table().queryByText(/Anteil von admin/)).not.toBeInTheDocument();
+
+    await userEvent.click(table().getByRole("button", { name: /Buchungen zu Projekt Website/ }));
+
+    expect(table().getAllByRole("row")).toHaveLength(4);
+    expect(table().getByText(anteilPartner.description)).toBeInTheDocument();
+    expect(table().getByText(gegenbuchung.description)).toBeInTheDocument();
+  });
+
+  it("klappt beim Klick auf die Zeile auf, nicht nur auf den Hinweis", async () => {
+    ({ restore } = mockFinance({ "/finance": aufteilung }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = () => within(screen.getByRole("table"));
+    // Irgendwo in die Zeile — hier auf die Beschreibung, nicht auf den Aufklapper
+    await userEvent.click(table().getByText("Projekt Website"));
+
+    expect(table().getAllByRole("row")).toHaveLength(4);
+
+    // und wieder zu
+    await userEvent.click(table().getByText("Projekt Website"));
+    expect(table().getAllByRole("row")).toHaveLength(2);
+  });
+
+  it("klappt nicht auf, wenn man in der Zeile bearbeiten drückt", async () => {
+    ({ restore } = mockFinance({ "/finance": aufteilung }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = () => within(screen.getByRole("table"));
+    await userEvent.click(table().getByRole("button", { name: /Projekt Website bearbeiten/ }));
+
+    expect(screen.getByText("Eintrag bearbeiten")).toBeInTheDocument();
+    expect(table().getAllByRole("row")).toHaveLength(2);
+  });
+
+  it("sagt an der Zeile, was eingeklappt darunter liegt", async () => {
+    const anzahlung: FinanceEntry = {
+      ...rechnung,
+      id: "s-4",
+      kind: "DEPOSIT",
+      status: "PAID",
+      parentId: kundenrechnung.id,
+      amount: 300,
+      description: "Anzahlung Website",
+    };
+    ({ restore } = mockFinance({ "/finance": [...aufteilung, anzahlung] }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    const toggle = table.getByRole("button", { name: /Buchungen zu Projekt Website/ });
+
+    expect(toggle).toHaveTextContent("1 Anzahlung · 2 intern");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("nennt bei einer geteilten Ausgabe den Gesamtbeleg", async () => {
+    const eigeneHaelfte: FinanceEntry = {
+      ...rechnung,
+      id: "h-1",
+      type: "EXPENSE",
+      amount: 600,
+      netAmount: 500,
+      vatAmount: 100,
+      description: "Serverkosten",
+      splitGroupId: "g-2",
+      splitRole: "HALF",
+      splitPartnerUsername: testUser2.username,
+    };
+    const partnerHaelfte: FinanceEntry = {
+      ...eigeneHaelfte,
+      id: "h-2",
+      createdBy: testUser2.id,
+      createdByUsername: testUser2.username,
+      splitPartnerUsername: testUser.username,
+    };
+    ({ restore } = mockFinance({ "/finance": [eigeneHaelfte, partnerHaelfte] }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Serverkosten").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    // Eine Zeile — die Kopfzeile zeigt die eigene Hälfte, der Hinweis den ganzen Beleg
+    expect(table.getAllByRole("row")).toHaveLength(2);
+    expect(table.getByRole("button", { name: /Buchungen zu Serverkosten/ })).toHaveTextContent(
+      /zweite Hälfte · Beleg gesamt 1\.200,00/,
+    );
+  });
+
+  it("zeigt mit 'Alle Buchungen' wieder jede einzelne Buchung", async () => {
+    ({ restore } = mockFinance({ "/finance": aufteilung }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = () => within(screen.getByRole("table"));
+    await userEvent.click(screen.getByRole("button", { name: "Alle Buchungen" }));
+
+    expect(table().getAllByRole("row")).toHaveLength(4);
+    // Flach heisst flach: keine Klammer, kein Aufklapper
+    expect(table().queryByRole("button", { name: /Buchungen zu/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alle Buchungen" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("bietet den Umschalter nicht an, wenn es nichts zusammenzufassen gibt", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    expect(screen.queryByRole("button", { name: "Alle Buchungen" })).not.toBeInTheDocument();
   });
 
   // ── Fehler ──────────────────────────────────────────────────────

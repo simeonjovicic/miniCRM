@@ -859,6 +859,7 @@ export default function FinancePage({ user }: { user: User }) {
         people={users}
         personFilter={personFilter}
         onPersonFilter={setPersonFilter}
+        selfId={user.id}
         canEdit={canEdit}
         onEdit={startEdit}
         onDelete={handleDelete}
@@ -1338,13 +1339,147 @@ function SettingsPanel({
   );
 }
 
+/* ── Vorgänge ──────────────────────────────────────────────────── */
+
+/**
+ * Ein Vorgang ist das, was nach aussen passiert ist: eine gestellte Rechnung,
+ * eine bezahlte Ausgabe. Die Buchungen darunter sind nur die Innenansicht
+ * davon — der Anteil, den der Partner in Rechnung stellt, dieselbe Rechnung
+ * als Aufwand, die schon geleistete Anzahlung, die zweite Hälfte einer
+ * geteilten Ausgabe.
+ *
+ * Ohne diese Klammer stehen für zwei gestellte Rechnungen fünf Zeilen in der
+ * Liste, und man muss jedes Mal neu nachrechnen, welche davon echtes Geld von
+ * aussen sind. Gruppiert wird über die bereits gefilterte Liste: was der
+ * Personenfilter ausblendet, kann auch keinen Kopf tragen — die verbliebene
+ * Buchung steht dann für sich.
+ */
+type Vorgang = {
+  head: FinanceEntry;
+  children: FinanceEntry[];
+};
+
+/** Interne Verrechnung zwischen den beiden — kein Geld von aussen. */
+function isInternalShare(entry: FinanceEntry): boolean {
+  return entry.splitRole === "SHARE_IN" || entry.splitRole === "SHARE_OUT";
+}
+
+/** Anzahlung auf eine erfasste Schlussrechnung — zählt dort als Zahlung, nicht als Umsatz. */
+function isLinkedDeposit(entry: FinanceEntry): boolean {
+  return entry.kind === "DEPOSIT" && !!entry.parentId;
+}
+
+/**
+ * Wer die Klammer trägt: bei geteilten Einnahmen die Kundenrechnung (ORIGIN),
+ * bei geteilten Ausgaben die eigene Hälfte — die andere hängt darunter. Beide
+ * Hälften sind gleichwertig, also entscheidet, wer draufschaut; ohne eigene
+ * Hälfte die erste der Liste.
+ */
+function headByGroup(entries: FinanceEntry[], selfId: string): Map<string, FinanceEntry> {
+  const heads = new Map<string, FinanceEntry>();
+
+  for (const entry of entries) {
+    if (!entry.splitGroupId) continue;
+    const current = heads.get(entry.splitGroupId);
+
+    if (!current || entry.splitRole === "ORIGIN") {
+      heads.set(entry.splitGroupId, entry);
+    } else if (current.splitRole !== "ORIGIN" && entry.createdBy === selfId && current.createdBy !== selfId) {
+      heads.set(entry.splitGroupId, entry);
+    }
+  }
+
+  return heads;
+}
+
+/**
+ * Fasst die Buchungen zu Vorgängen zusammen. Die Reihenfolge der Köpfe bleibt
+ * die der Liste — sortiert wird weiterhin serverseitig nach Datum.
+ */
+function groupEntries(entries: FinanceEntry[], selfId: string): Vorgang[] {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const heads = headByGroup(entries, selfId);
+
+  /** Der Kopf, unter den diese Buchung gehört — oder null, wenn sie selbst einer ist. */
+  function parentOf(entry: FinanceEntry): string | null {
+    if (isLinkedDeposit(entry) && byId.has(entry.parentId!)) {
+      // Die Schlussrechnung kann selbst Teil einer Aufteilung sein: dann geht
+      // die Anzahlung an deren Kopf, sonst hinge sie unter einer Unterzeile.
+      const invoice = byId.get(entry.parentId!)!;
+      const head = invoice.splitGroupId ? heads.get(invoice.splitGroupId) : undefined;
+      return (head ?? invoice).id;
+    }
+    if (entry.splitGroupId) {
+      const head = heads.get(entry.splitGroupId);
+      if (head && head.id !== entry.id) return head.id;
+    }
+    return null;
+  }
+
+  const groups = new Map<string, Vorgang>();
+  const order: string[] = [];
+
+  for (const entry of entries) {
+    if (parentOf(entry) !== null) continue;
+    groups.set(entry.id, { head: entry, children: [] });
+    order.push(entry.id);
+  }
+
+  for (const entry of entries) {
+    const parent = parentOf(entry);
+    if (parent === null) continue;
+    const group = groups.get(parent);
+    // Fehlt der Kopf trotz allem, steht die Buchung lieber allein da als gar nicht.
+    if (group) group.children.push(entry);
+    else {
+      groups.set(entry.id, { head: entry, children: [] });
+      order.push(entry.id);
+    }
+  }
+
+  // Anzahlungen zuerst — sie sind Teil der Zahlung, die Anteile nur Umbuchung.
+  for (const group of groups.values()) {
+    group.children.sort((a, b) => Number(isLinkedDeposit(b)) - Number(isLinkedDeposit(a)));
+  }
+
+  return order.map((id) => groups.get(id)!);
+}
+
+/**
+ * Was eingeklappt ist, muss die Zeile trotzdem verraten — sonst versteckt die
+ * Gruppierung Buchungen, statt sie zu ordnen.
+ */
+function vorgangHint(group: Vorgang): string {
+  const deposits = group.children.filter(isLinkedDeposit).length;
+  const internal = group.children.filter(isInternalShare).length;
+  const halves = group.children.length - deposits - internal;
+
+  const parts: string[] = [];
+  if (deposits) parts.push(deposits === 1 ? "1 Anzahlung" : `${deposits} Anzahlungen`);
+  if (internal) parts.push(`${internal} intern`);
+  if (halves) {
+    // Bei geteilten Ausgaben ist die Kopfzeile nur die halbe Wahrheit: der Beleg
+    // ist so gross wie beide Hälften zusammen. Diese Zahl steht sonst nirgends.
+    const total = group.children.reduce(
+      (sum, child) => sum + (isLinkedDeposit(child) || isInternalShare(child) ? 0 : child.amount),
+      group.head.amount,
+    );
+    parts.push(`${halves === 1 ? "zweite Hälfte" : `${halves} weitere Hälften`} · Beleg gesamt ${formatCurrency(total)}`);
+  }
+
+  return parts.join(" · ");
+}
+
 /* ── Einträge ──────────────────────────────────────────────────── */
+
+const SHOW_INTERNAL_KEY = "finance.showInternal";
 
 function EntryList({
   entries,
   people,
   personFilter,
   onPersonFilter,
+  selfId,
   canEdit,
   onEdit,
   onDelete,
@@ -1354,6 +1489,7 @@ function EntryList({
   people: User[];
   personFilter: string;
   onPersonFilter: (userId: string) => void;
+  selfId: string;
   canEdit: (e: FinanceEntry) => boolean;
   onEdit: (e: FinanceEntry) => void;
   onDelete: (id: string) => void;
@@ -1361,30 +1497,87 @@ function EntryList({
 }) {
   const sharePercent = useSharePercentByGroup(entries);
 
+  /**
+   * Der flache Blick bleibt eine Umschaltung statt eines zweiten Bildschirms —
+   * für die Steuer will man irgendwann jede Buchung einzeln sehen. Die Wahl
+   * überlebt den Seitenwechsel, sonst stellt man sie jedes Mal neu um.
+   */
+  const [showInternal, setShowInternal] = useState(
+    () => localStorage.getItem(SHOW_INTERNAL_KEY) === "true",
+  );
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  function toggleInternal() {
+    setShowInternal((prev) => {
+      localStorage.setItem(SHOW_INTERNAL_KEY, String(!prev));
+      return !prev;
+    });
+  }
+
+  function toggleGroup(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  const groups = useMemo(
+    () => (showInternal ? entries.map((e) => ({ head: e, children: [] })) : groupEntries(entries, selfId)),
+    [entries, selfId, showInternal],
+  );
+
+  const hasGrouped = groups.some((g) => g.children.length > 0);
+
+  /** Kopf plus die aufgeklappten Kinder — beide Ansichten rendern dieselbe Folge. */
+  const rows = groups.flatMap((group) => [
+    { entry: group.head, group, child: false },
+    ...(expanded.has(group.head.id)
+      ? group.children.map((entry) => ({ entry, group, child: true }))
+      : []),
+  ]);
+
   return (
     <div className="glass rounded-2xl p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-text-bright">Einträge</h2>
 
-        {/* Personenfilter — die beiden Bücher sollen sich nicht vermischen */}
-        {people.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Nach Person filtern">
-            {[{ id: "", username: "Alle" }, ...people].map((p) => (
-              <button
-                key={p.id || "all"}
-                onClick={() => onPersonFilter(p.id)}
-                aria-pressed={personFilter === p.id}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                  personFilter === p.id
-                    ? "bg-accent text-white shadow-sm"
-                    : "bg-white/50 text-text-secondary hover:text-text-bright"
-                }`}
-              >
-                {p.username}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Nur anbieten, wo es auch etwas zusammenzufassen gibt */}
+          {(hasGrouped || showInternal) && (
+            <button
+              onClick={toggleInternal}
+              aria-pressed={showInternal}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                showInternal
+                  ? "bg-accent text-white shadow-sm"
+                  : "bg-white/50 text-text-secondary hover:text-text-bright"
+              }`}
+            >
+              Alle Buchungen
+            </button>
+          )}
+
+          {/* Personenfilter — die beiden Bücher sollen sich nicht vermischen */}
+          {people.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Nach Person filtern">
+              {[{ id: "", username: "Alle" }, ...people].map((p) => (
+                <button
+                  key={p.id || "all"}
+                  onClick={() => onPersonFilter(p.id)}
+                  aria-pressed={personFilter === p.id}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    personFilter === p.id
+                      ? "bg-accent text-white shadow-sm"
+                      : "bg-white/50 text-text-secondary hover:text-text-bright"
+                  }`}
+                >
+                  {p.username}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {entries.length === 0 ? (
@@ -1407,16 +1600,45 @@ function EntryList({
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.id} className="border-b border-white/30 transition-colors last:border-0 hover:bg-white/40">
-                    <td className="px-4 py-3.5 font-mono text-xs text-text-secondary">
+                {rows.map(({ entry, group, child }) => (
+                  <tr
+                    key={entry.id}
+                    // Die ganze Zeile klappt auf, nicht nur der Hinweis darunter —
+                    // auf einen 11px hohen Text zielen zu müssen ist niemandem zumutbar.
+                    onClick={
+                      !child && group.children.length > 0
+                        ? () => toggleGroup(group.head.id)
+                        : undefined
+                    }
+                    className={`border-b border-white/30 transition-colors last:border-0 ${
+                      child ? "bg-white/20" : "hover:bg-white/40"
+                    } ${!child && group.children.length > 0 ? "cursor-pointer" : ""}`}
+                  >
+                    <td
+                      className={`py-3.5 pr-4 font-mono text-xs text-text-secondary ${child ? "pl-9" : "pl-4"}`}
+                    >
                       {new Date(entry.date).toLocaleDateString("de-DE")}
                     </td>
                     <td className="px-4 py-3.5 text-text-bright">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span>{entry.description}</span>
+                        {child && (
+                          <span aria-hidden="true" className="font-mono text-text-secondary">
+                            └
+                          </span>
+                        )}
+                        <span className={child ? "text-text-secondary" : undefined}>
+                          {entry.description}
+                        </span>
                         <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
                       </div>
+                      {!child && group.children.length > 0 && (
+                        <ExpandToggle
+                          open={expanded.has(group.head.id)}
+                          hint={vorgangHint(group)}
+                          description={group.head.description}
+                          onToggle={() => toggleGroup(group.head.id)}
+                        />
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
@@ -1449,8 +1671,18 @@ function EntryList({
 
           {/* Mobile card list */}
           <div className="space-y-2 sm:hidden">
-            {entries.map((entry) => (
-              <div key={entry.id} className="rounded-xl bg-white/40 px-4 py-3">
+            {rows.map(({ entry, group, child }) => (
+              <div
+                key={entry.id}
+                onClick={
+                  !child && group.children.length > 0
+                    ? () => toggleGroup(group.head.id)
+                    : undefined
+                }
+                className={`rounded-xl px-4 py-3 ${child ? "ml-4 bg-white/25" : "bg-white/40"} ${
+                  !child && group.children.length > 0 ? "cursor-pointer" : ""
+                }`}
+              >
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -1460,11 +1692,21 @@ function EntryList({
                         {new Date(entry.date).toLocaleDateString("de-DE")}
                       </span>
                     </div>
-                    <p className="truncate text-sm text-text-bright">{entry.description}</p>
+                    <p className={`truncate text-sm ${child ? "text-text-secondary" : "text-text-bright"}`}>
+                      {entry.description}
+                    </p>
                     <p className="font-mono text-[11px] text-text-secondary">
                       {entry.vatRate > 0 ? `USt ${formatCurrency(entry.vatAmount)} · ` : ""}
                       {formatCurrency(entry.amount)} brutto
                     </p>
+                    {!child && group.children.length > 0 && (
+                      <ExpandToggle
+                        open={expanded.has(group.head.id)}
+                        hint={vorgangHint(group)}
+                        description={group.head.description}
+                        onToggle={() => toggleGroup(group.head.id)}
+                      />
+                    )}
                   </div>
                   {/* Hauptzahl netto wie in der Tabelle, Brutto steht als Nebenzeile links */}
                   <div className="shrink-0 text-right">
@@ -1486,6 +1728,49 @@ function EntryList({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Der Aufklapper trägt gleichzeitig die Zusammenfassung dessen, was er verbirgt.
+ * Ein blosses Dreieck würde die Zeilen zwar aufräumen, aber verschweigen, dass
+ * darunter noch etwas liegt — und genau das war der Grund für die Gruppierung.
+ */
+function ExpandToggle({
+  open,
+  hint,
+  description,
+  onToggle,
+}: {
+  open: boolean;
+  hint: string;
+  description: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      // Die Zeile darüber klappt selbst schon auf — ohne das hier hebe sich der
+      // Klick sofort wieder auf.
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-expanded={open}
+      aria-label={`Buchungen zu ${description}`}
+      className="mt-1 flex items-center gap-1 text-[11px] font-medium text-text-secondary transition-colors hover:text-accent"
+    >
+      <svg
+        className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-90" : ""}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={3}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+      {hint}
+    </button>
   );
 }
 
@@ -1700,7 +1985,8 @@ function RowActions({
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-1">
+    // Bearbeiten und Löschen dürfen die Zeile nicht nebenbei auf- oder zuklappen
+    <div className="flex shrink-0 items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => onEdit(entry)}
         title="Bearbeiten"
