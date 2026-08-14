@@ -267,8 +267,8 @@ describe("FinancePage", () => {
     }));
     renderWithRouter(<FinancePage user={testUser} />);
 
-    // Am Meter muss stehen, woher der höhere Stand kommt
-    expect(await screen.findByText(/inkl\. 5\.000,00 € außerhalb/)).toBeInTheDocument();
+    // Am Meter muss stehen, woher der höhere Stand kommt — knapp, ohne Cent
+    expect(await screen.findByText(/\+5\.000 € außerhalb/)).toBeInTheDocument();
   });
 
   it("bietet je Person ein Feld für Umsatz außerhalb", async () => {
@@ -299,8 +299,9 @@ describe("FinancePage", () => {
     expect(svs).toHaveAttribute("aria-valuenow", "6");
     expect(kleinunternehmer).toHaveAttribute("aria-valuenow", "1");
 
-    expect(screen.getByText("Basis: Gewinn")).toBeInTheDocument();
-    expect(screen.getByText("Basis: Umsatz brutto")).toBeInTheDocument();
+    // Die Grenze steht in der Überschrift statt in jeder einzelnen Zeile
+    expect(screen.getByText("Basis: Gewinn · Grenze 6.613 €")).toBeInTheDocument();
+    expect(screen.getByText("Basis: Umsatz brutto · Grenze 55.000 €")).toBeInTheDocument();
   });
 
   /**
@@ -402,7 +403,7 @@ describe("FinancePage", () => {
     }));
     renderWithRouter(<FinancePage user={testUser} />);
 
-    expect(await screen.findByText(/überschritten um/)).toBeInTheDocument();
+    expect(await screen.findByText(/über 387 €/)).toBeInTheDocument();
   });
 
   // ── Brutto/Netto-Umschalter ─────────────────────────────────────
@@ -1022,8 +1023,59 @@ describe("FinancePage", () => {
     await userEvent.click(table().getByRole("button", { name: /Buchungen zu Projekt Website/ }));
 
     expect(table().getAllByRole("row")).toHaveLength(4);
-    expect(table().getByText(anteilPartner.description)).toBeInTheDocument();
-    expect(table().getByText(gegenbuchung.description)).toBeInTheDocument();
+    // Der Vorgang steht in der Kopfzeile — die Unterzeile wiederholt ihn nicht
+    expect(table().queryByText(anteilPartner.description)).not.toBeInTheDocument();
+    expect(table().getAllByText("Anteil von admin").length).toBeGreaterThan(0);
+    expect(table().getAllByText("Anteil an bob").length).toBeGreaterThan(0);
+  });
+
+  it("trennt zwei offene Vorgaenge, ohne die Zeilen zu verfaelschen", async () => {
+    const zweite = aufteilung.map((e) => ({
+      ...e,
+      id: `${e.id}-b`,
+      splitGroupId: "g-2",
+      description: e.description.replace("Projekt Website", "Zweiter Auftrag"),
+    }));
+    ({ restore } = mockFinance({ "/finance": [...aufteilung, ...zweite] }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = () => within(screen.getByRole("table"));
+    await userEvent.click(table().getByRole("button", { name: /Buchungen zu Projekt Website/ }));
+    await userEvent.click(table().getByRole("button", { name: /Buchungen zu Zweiter Auftrag/ }));
+
+    // Der Abstandshalter zwischen den Bloecken ist Dekoration und darf in der
+    // Zeilenzahl nicht auftauchen: 2 Koepfe + 4 Unterzeilen + Kopfzeile
+    expect(table().getAllByRole("row")).toHaveLength(7);
+  });
+
+  it("zeigt an der Unterzeile nur, was nicht schon am Kopf steht", async () => {
+    const anzahlung: FinanceEntry = {
+      ...rechnung,
+      id: "s-5",
+      kind: "DEPOSIT",
+      status: "PAID",
+      parentId: kundenrechnung.id,
+      amount: 300,
+      // Eine Anzahlung liegt oft Wochen vor der Schlussrechnung — dieses Datum
+      // ist Information und darf nicht wegfallen.
+      date: `${YEAR}-05-02`,
+      description: "Projekt Website — Erste Rate",
+    };
+    ({ restore } = mockFinance({ "/finance": [kundenrechnung, gegenbuchung, anzahlung] }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    await userEvent.click(table.getByRole("button", { name: /Buchungen zu Projekt Website/ }));
+
+    // Rechnungsname gekuerzt — "Anzahlung" allein waere das Statusabzeichen
+    expect(table.getByText("Erste Rate")).toBeInTheDocument();
+    // Gleiches Datum wie der Kopf faellt weg, das abweichende bleibt
+    expect(table.getAllByText(/15\.6\./).length).toBe(1);
+    expect(table.getByText(/2\.5\./)).toBeInTheDocument();
   });
 
   it("klappt beim Klick auf die Zeile auf, nicht nur auf den Hinweis", async () => {

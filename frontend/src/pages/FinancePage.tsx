@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { customersApi, financeApi, storageApi, usersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
@@ -436,40 +436,22 @@ export default function FinancePage({ user }: { user: User }) {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-text-bright">Finanzen</h1>
-        <div className="flex items-center gap-2">
-          <select
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            aria-label="Jahr"
-            className="glass-input rounded-xl px-3 py-2 text-sm text-text-bright"
-          >
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowSettings((v) => !v)}
-            className="glass-chip rounded-xl px-3 py-2 text-sm text-text-secondary transition-all hover:text-text-bright"
-          >
-            Einstellungen
-          </button>
-        </div>
+        <select
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          aria-label="Jahr"
+          className="glass-input rounded-xl px-3 py-2 text-sm text-text-bright"
+        >
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
       </div>
 
       {error && (
         <div className="mb-4 rounded-xl bg-status-churned/10 px-4 py-3 text-sm text-status-churned">
           {error}
         </div>
-      )}
-
-      {showSettings && stats && (
-        <SettingsPanel
-          stats={stats}
-          year={year}
-          onSaved={reload}
-          onError={setError}
-          onClose={() => setShowSettings(false)}
-        />
       )}
 
       {stats && (
@@ -507,6 +489,22 @@ export default function FinancePage({ user }: { user: User }) {
               people={orderedPeople}
               activePerson={activePerson}
               onSelect={setPersonTab}
+              settingsOpen={showSettings}
+              onToggleSettings={() => setShowSettings((v) => !v)}
+            />
+          )}
+
+          {/*
+            Direkt unter den Grenzen, weil dort auch der Schalter sitzt: die
+            Einstellungen setzen genau die Werte, gegen die hier gemessen wird.
+          */}
+          {showSettings && (
+            <SettingsPanel
+              stats={stats}
+              year={year}
+              onSaved={reload}
+              onError={setError}
+              onClose={() => setShowSettings(false)}
             />
           )}
 
@@ -895,10 +893,14 @@ function ThresholdPanel({
   people,
   activePerson,
   onSelect,
+  settingsOpen,
+  onToggleSettings,
 }: {
   people: FinanceUserStats[];
   activePerson: FinanceUserStats;
   onSelect: (userId: string) => void;
+  settingsOpen: boolean;
+  onToggleSettings: () => void;
 }) {
   const colorOf = (index: number) => PERSON_COLORS[index % PERSON_COLORS.length];
   const activeIndex = people.findIndex((p) => p.userId === activePerson.userId);
@@ -908,6 +910,7 @@ function ThresholdPanel({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-text-bright">Grenzwerte &amp; Kennzahlen</h2>
 
+        <div className="flex flex-wrap items-center gap-3">
         {people.length > 1 && (
           <div
             className="flex flex-wrap items-center gap-1"
@@ -939,14 +942,36 @@ function ThresholdPanel({
             })}
           </div>
         )}
+
+        {/*
+          Die Einstellungen gehoeren hierher und nicht neben das Jahr: sie setzen
+          genau die beiden Grenzen, die darunter gemessen werden.
+        */}
+        <button
+          onClick={onToggleSettings}
+          aria-expanded={settingsOpen}
+          className={`text-xs font-medium transition-colors ${
+            settingsOpen ? "text-accent" : "text-text-secondary hover:text-text-bright"
+          }`}
+        >
+          Einstellungen
+        </button>
+        </div>
       </div>
 
       <div className="space-y-4">
         {THRESHOLD_KINDS.map((kind) => (
           <div key={kind.key}>
+            {/*
+              Die Grenze gilt für beide gleich — einmal in der Überschrift statt
+              in jeder Zeile hinter jedem Betrag. Das nimmt der Zeile die halbe
+              Länge, ohne dass die Zahl verlorengeht.
+            */}
             <p className="mb-2 text-xs font-medium text-text-bright">
               {kind.label}
-              <span className="ml-1.5 text-[10px] font-normal text-text-secondary">{kind.basis}</span>
+              <span className="ml-1.5 text-[10px] font-normal text-text-secondary">
+                {kind.basis} · Grenze {compactEuro(people[0]?.[kind.key].threshold ?? 0)}
+              </span>
             </p>
             <div className="space-y-1.5">
               {people.map((person, i) => (
@@ -1046,20 +1071,25 @@ function ThresholdMeter({
         {Math.round(progress.percent)}%
       </span>
 
+      {/*
+        Kurz halten: die Grenze steht in der Überschrift, Cent sind bei
+        fünfstelligen Grenzen Rauschen. Übrig bleibt, was man wirklich abliest —
+        wo man steht und wie weit es noch ist.
+      */}
       <span className="w-full text-right font-mono text-[10px] text-text-secondary sm:w-auto">
-        {formatCurrency(progress.current)} / {formatCurrency(progress.threshold)}
+        {compactEuro(progress.current)}
         {/* Sonst wäre unerklärlich, warum die Grenze mehr sieht als der Umsatz */}
         {kind.key === "smallBusiness" && person.externalRevenue > 0 && (
           <span className="ml-1.5 font-sans">
-            inkl. {formatCurrency(person.externalRevenue)} außerhalb
+            +{compactEuro(person.externalRevenue)} außerhalb
           </span>
         )}
         {progress.exceeded ? (
           <span className="ml-1.5 font-sans font-medium text-status-churned">
-            überschritten um {formatCurrency(Math.abs(progress.remaining))}
+            über {compactEuro(Math.abs(progress.remaining))}
           </span>
         ) : (
-          <span className="ml-1.5 font-sans">noch {formatCurrency(progress.remaining)}</span>
+          <span className="ml-1.5 font-sans">noch {compactEuro(progress.remaining)}</span>
         )}
       </span>
     </div>
@@ -1209,6 +1239,7 @@ function SettingsPanel({
   const [svs, setSvs] = useState(String(stats.settings.svsThreshold));
   const [smallBusiness, setSmallBusiness] = useState(String(stats.settings.smallBusinessThreshold));
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   /**
    * Nebenumsätze je Person. Startwert kommt aus der Statistik, die ihn ohnehin
    * schon mitliefert — spart einen zweiten Ladevorgang.
@@ -1219,6 +1250,7 @@ function SettingsPanel({
 
   async function save() {
     setSaving(true);
+    setSaveError(null);
     try {
       await financeApi.updateSettings(year, {
         svsThreshold: parseFloat(svs),
@@ -1237,6 +1269,7 @@ function SettingsPanel({
       onSaved();
       onClose();
     } catch (err) {
+      setSaveError((err as Error).message);
       onError((err as Error).message);
     } finally {
       setSaving(false);
@@ -1319,6 +1352,17 @@ function SettingsPanel({
         Geteilte Einnahmen werden beim Anlegen in zwei Buchungen zerlegt — je eine
         pro Person, jede mit ihrer halben USt. Eine Einstellung braucht es dafür nicht.
       </p>
+
+      {/*
+        Scheitert das Speichern, muss es hier stehen und nicht im Banner ganz
+        oben: wer unten auf Speichern drückt, sieht den Kopf der Seite nicht und
+        haelt einen fehlgeschlagenen Aufruf für "es passiert nichts".
+      */}
+      {saveError && (
+        <p role="alert" className="mt-3 rounded-xl bg-status-churned/10 px-3 py-2 text-xs text-status-churned">
+          {saveError}
+        </p>
+      )}
 
       <div className="mt-4 flex gap-2">
         <button
@@ -1446,6 +1490,31 @@ function groupEntries(entries: FinanceEntry[], selfId: string): Vorgang[] {
 }
 
 /**
+ * Der Vorgang steht schon in der Kopfzeile — die Unterzeile muss ihn nicht
+ * wiederholen. Derselbe Gedanke wie bei {@link openLabel} unter Offenen Posten,
+ * nur dass hier der Kopf danebensteht und den Namen genau hergibt.
+ */
+function childLabel(entry: FinanceEntry, head: FinanceEntry): string {
+  const prefix = `${head.description} — `;
+  if (entry.description.startsWith(prefix)) {
+    const rest = entry.description.slice(prefix.length).trim();
+    if (rest) return rest;
+  }
+  return entry.description;
+}
+
+/**
+ * Person, Nettobetrag und — nur wenn es abweicht — das Datum. Dreimal
+ * dasselbe Datum untereinander ist Rauschen; eine Anzahlung von vor zwei Wochen
+ * dagegen ist genau die Information, die man sucht.
+ */
+function childMeta(entry: FinanceEntry, head: FinanceEntry): string {
+  const parts = [entry.createdByUsername, `netto ${formatCurrency(entry.netAmount)}`];
+  if (entry.date !== head.date) parts.push(new Date(entry.date).toLocaleDateString("de-DE"));
+  return parts.filter(Boolean).join(" · ");
+}
+
+/**
  * Was eingeklappt ist, muss die Zeile trotzdem verraten — sonst versteckt die
  * Gruppierung Buchungen, statt sie zu ordnen.
  */
@@ -1529,13 +1598,18 @@ function EntryList({
 
   const hasGrouped = groups.some((g) => g.children.length > 0);
 
-  /** Kopf plus die aufgeklappten Kinder — beide Ansichten rendern dieselbe Folge. */
-  const rows = groups.flatMap((group) => [
-    { entry: group.head, group, child: false },
-    ...(expanded.has(group.head.id)
-      ? group.children.map((entry) => ({ entry, group, child: true }))
-      : []),
-  ]);
+  /**
+   * Kopf plus die aufgeklappten Kinder — beide Ansichten rendern dieselbe Folge.
+   * `last` markiert das Ende eines Vorgangs: nur dort wird noch getrennt, im
+   * Inneren des Blocks nicht.
+   */
+  const rows = groups.flatMap((group) => {
+    const open = expanded.has(group.head.id) ? group.children : [];
+    return [
+      { entry: group.head, group, child: false, last: open.length === 0 },
+      ...open.map((entry, i) => ({ entry, group, child: true, last: i === open.length - 1 })),
+    ];
+  });
 
   return (
     <div className="glass rounded-2xl p-4 sm:p-5">
@@ -1600,78 +1674,130 @@ function EntryList({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ entry, group, child }) => (
+                {rows.map(({ entry, group, child, last }, i) => {
+                  const grouped = group.children.length > 0;
+                  const inBlock = grouped && expanded.has(group.head.id);
+                  return (
+                  <Fragment key={entry.id}>
                   <tr
-                    key={entry.id}
                     // Die ganze Zeile klappt auf, nicht nur der Hinweis darunter —
                     // auf einen 11px hohen Text zielen zu müssen ist niemandem zumutbar.
-                    onClick={
-                      !child && group.children.length > 0
-                        ? () => toggleGroup(group.head.id)
-                        : undefined
-                    }
-                    className={`border-b border-white/30 transition-colors last:border-0 ${
-                      child ? "bg-white/20" : "hover:bg-white/40"
-                    } ${!child && group.children.length > 0 ? "cursor-pointer" : ""}`}
+                    onClick={!child && grouped ? () => toggleGroup(group.head.id) : undefined}
+                    className={`transition-colors ${
+                      // Innerhalb eines offenen Vorgangs keine Trennlinie: der Block
+                      // soll als ein Stück lesbar sein, nicht als drei Nachbarn.
+                      // Offene Bloecke trennt stattdessen die Luecke darunter.
+                      last && !inBlock ? "border-b border-white/30 last:border-0" : ""
+                    } ${
+                      // Der Kopf traegt den kraeftigeren Ton: so faengt jeder Block
+                      // sichtbar an, auch wenn zwei offene aufeinander folgen.
+                      inBlock ? (child ? "bg-accent/[0.05]" : "bg-accent/[0.11]") : "hover:bg-white/40"
+                    } ${!child && grouped ? "cursor-pointer" : ""}`}
                   >
-                    <td
-                      className={`py-3.5 pr-4 font-mono text-xs text-text-secondary ${child ? "pl-9" : "pl-4"}`}
-                    >
-                      {new Date(entry.date).toLocaleDateString("de-DE")}
-                    </td>
-                    <td className="px-4 py-3.5 text-text-bright">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {child && (
-                          <span aria-hidden="true" className="font-mono text-text-secondary">
-                            └
+                    {child ? (
+                      /* Unterzeile: fällt aus dem Spaltenraster heraus, damit sie
+                         als Teil des Vorgangs lesbar ist und nicht als eigener. */
+                      <td
+                        colSpan={8}
+                        className={`border-l-2 border-accent/40 py-2 pl-4 pr-4 ${
+                          last ? "rounded-bl-xl rounded-br-xl pb-3" : ""
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6">
+                          <span aria-hidden="true" className="font-mono text-xs text-text-secondary">
+                            {last ? "└" : "├"}
                           </span>
-                        )}
-                        <span className={child ? "text-text-secondary" : undefined}>
-                          {entry.description}
-                        </span>
-                        <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
-                      </div>
-                      {!child && group.children.length > 0 && (
-                        <ExpandToggle
-                          open={expanded.has(group.head.id)}
-                          hint={vorgangHint(group)}
-                          description={group.head.description}
-                          onToggle={() => toggleGroup(group.head.id)}
-                        />
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
-                    </td>
-                    <td className="px-4 py-3.5 text-xs text-text-secondary">
-                      {entry.createdByUsername ?? "—"}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-xs text-text-secondary">
-                      {formatCurrency(entry.netAmount)}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-xs text-text-secondary">
-                      {entry.vatRate > 0 ? `${formatCurrency(entry.vatAmount)} (${entry.vatRate}%)` : "—"}
-                    </td>
-                    <td
-                      className={`px-4 py-3.5 text-right font-mono font-medium ${
-                        MONEY_TONE[entry.type === "EXPENSE" ? "out" : "in"]
-                      }`}
-                    >
-                      {entry.type === "EXPENSE" ? "−" : "+"}
-                      {formatCurrency(entry.amount)}
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      {canEdit(entry) && <RowActions entry={entry} onEdit={onEdit} onDelete={onDelete} />}
-                    </td>
+                          <span className="text-[13px] text-text-secondary">
+                            {childLabel(entry, group.head)}
+                          </span>
+                          <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
+                          <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
+                          <span className="font-mono text-[11px] text-text-secondary">
+                            {childMeta(entry, group.head)}
+                          </span>
+                          <span
+                            className={`ml-auto font-mono text-[13px] font-medium ${
+                              MONEY_TONE[entry.type === "EXPENSE" ? "out" : "in"]
+                            }`}
+                          >
+                            {entry.type === "EXPENSE" ? "−" : "+"}
+                            {formatCurrency(entry.amount)}
+                          </span>
+                          {canEdit(entry) && <RowActions entry={entry} onEdit={onEdit} onDelete={onDelete} />}
+                        </div>
+                      </td>
+                    ) : (
+                      <>
+                        <td
+                          className={`py-3.5 pr-4 pl-4 font-mono text-xs text-text-secondary ${
+                            inBlock ? "rounded-tl-xl border-l-2 border-accent/40" : ""
+                          }`}
+                        >
+                          {new Date(entry.date).toLocaleDateString("de-DE")}
+                        </td>
+                        <td className="px-4 py-3.5 text-text-bright">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {/* Der Kopf steht über seinen Unterzeilen, nicht daneben */}
+                            <span className="font-medium">{entry.description}</span>
+                            <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
+                          </div>
+                          {grouped && (
+                            <ExpandToggle
+                              open={inBlock}
+                              hint={vorgangHint(group)}
+                              description={group.head.description}
+                              onToggle={() => toggleGroup(group.head.id)}
+                            />
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-text-secondary">
+                          {entry.createdByUsername ?? "—"}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-text-secondary">
+                          {formatCurrency(entry.netAmount)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-text-secondary">
+                          {entry.vatRate > 0 ? `${formatCurrency(entry.vatAmount)} (${entry.vatRate}%)` : "—"}
+                        </td>
+                        <td
+                          className={`px-4 py-3.5 text-right font-mono font-medium ${
+                            MONEY_TONE[entry.type === "EXPENSE" ? "out" : "in"]
+                          }`}
+                        >
+                          {entry.type === "EXPENSE" ? "−" : "+"}
+                          {formatCurrency(entry.amount)}
+                        </td>
+                        <td className={`px-4 py-3.5 text-right ${inBlock ? "rounded-tr-xl" : ""}`}>
+                          {canEdit(entry) && <RowActions entry={entry} onEdit={onEdit} onDelete={onDelete} />}
+                        </td>
+                      </>
+                    )}
                   </tr>
-                ))}
+
+                  {/*
+                    Luft nach einem offenen Vorgang. Ohne sie laufen zwei
+                    aufgeklappte Bloecke ineinander und die Uebersicht, die die
+                    Gruppierung bringen soll, ist wieder dahin. Aus dem
+                    Barrierebaum genommen, damit die Zeilenzahl stimmt.
+                  */}
+                  {last && inBlock && i < rows.length - 1 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={8} className="h-3 p-0" />
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile card list */}
           <div className="space-y-2 sm:hidden">
-            {rows.map(({ entry, group, child }) => (
+            {rows.map(({ entry, group, child, last }) => (
               <div
                 key={entry.id}
                 onClick={
@@ -1679,8 +1805,21 @@ function EntryList({
                     ? () => toggleGroup(group.head.id)
                     : undefined
                 }
-                className={`rounded-xl px-4 py-3 ${child ? "ml-4 bg-white/25" : "bg-white/40"} ${
-                  !child && group.children.length > 0 ? "cursor-pointer" : ""
+                // Die Unterzeile schliesst oben an ihren Kopf an, statt als eigene
+                // Karte danebenzuliegen: dieselbe Leiste links, kein Abstand dazwischen.
+                className={`px-4 ${
+                  child
+                    ? // -mt-2 hebt den Abstand der Liste auf: die Unterzeile schliesst
+                      // direkt an ihren Kopf an. mb-3 setzt ihn nach dem letzten Kind
+                      // wieder — sonst klebt der naechste Vorgang am Block.
+                      `-mt-2 border-l-2 border-accent/40 bg-accent/[0.05] py-2 pl-5 ${
+                        last ? "mb-3 rounded-b-xl pb-3" : ""
+                      }`
+                    : `rounded-t-xl bg-white/40 py-3 ${
+                        group.children.length > 0 && expanded.has(group.head.id)
+                          ? "border-l-2 border-accent/40 bg-accent/[0.11]"
+                          : "rounded-b-xl"
+                      } ${group.children.length > 0 ? "cursor-pointer" : ""}`
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -1688,12 +1827,19 @@ function EntryList({
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
                       <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
-                      <span className="font-mono text-[11px] text-text-secondary">
-                        {new Date(entry.date).toLocaleDateString("de-DE")}
-                      </span>
+                      {/* Datum nur, wo es nicht ohnehin am Kopf steht */}
+                      {(!child || entry.date !== group.head.date) && (
+                        <span className="font-mono text-[11px] text-text-secondary">
+                          {new Date(entry.date).toLocaleDateString("de-DE")}
+                        </span>
+                      )}
                     </div>
-                    <p className={`truncate text-sm ${child ? "text-text-secondary" : "text-text-bright"}`}>
-                      {entry.description}
+                    <p
+                      className={`truncate ${
+                        child ? "text-[13px] text-text-secondary" : "text-sm font-medium text-text-bright"
+                      }`}
+                    >
+                      {child ? `${last ? "└" : "├"} ${childLabel(entry, group.head)}` : entry.description}
                     </p>
                     <p className="font-mono text-[11px] text-text-secondary">
                       {entry.vatRate > 0 ? `USt ${formatCurrency(entry.vatAmount)} · ` : ""}
@@ -2035,4 +2181,17 @@ function StatCard({
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value ?? 0);
+}
+
+/**
+ * Nur für die Grenzwert-Zeile: dort stehen vier Beträge nebeneinander, und auf
+ * eine Grenze von 55.000 kommt es auf den Cent nicht an. Überall sonst bleibt
+ * es bei {@link formatCurrency} — in der Buchhaltung wird nicht gerundet.
+ */
+function compactEuro(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(value ?? 0);
 }
