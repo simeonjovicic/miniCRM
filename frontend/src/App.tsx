@@ -519,15 +519,20 @@ function AppShell({
 
             <SyncStatusBadge />
 
+            {/*
+              Mit Beschriftung, nicht nur als Symbol: eine nackte Glocke findet
+              man zwischen den anderen Zeichen im Kopf schlicht nicht.
+            */}
             <button
               onClick={() => setNotificationsOpen(true)}
-              title="Benachrichtigungen"
+              title="Push-Benachrichtigungen einrichten"
               aria-label="Benachrichtigungen"
-              className="glass-chip rounded-full p-2 text-text-secondary transition-all hover:text-text-bright"
+              className="flex items-center gap-1.5 glass-chip rounded-full px-3 py-1.5 text-[13px] text-text-secondary transition-all hover:text-text-bright"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
+              Push
             </button>
 
             <button

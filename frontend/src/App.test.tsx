@@ -121,3 +121,50 @@ describe("App — Sitzung", () => {
     expect(await screen.findByText("Wer bist du?")).toBeInTheDocument();
   });
 });
+
+
+/**
+ * Die Einstellung fürs eigene ntfy-Thema war als blosse Glocke im Kopf nicht
+ * auffindbar. Diese Tests halten fest, dass sie beschriftet ist und sich
+ * öffnen lässt — eine Einstellung, die niemand findet, gibt es praktisch nicht.
+ */
+describe("App — Benachrichtigungen einrichten", () => {
+  let restore: () => void;
+
+  afterEach(() => restore?.());
+
+  function mockAngemeldet() {
+    return mockFetch({
+      "/auth/me": testUser,
+      "/auth/ntfy-topic": { topic: "", configured: false },
+      "/dashboard/stats": {
+        year: 2026,
+        openTodos: [],
+        openTodoCount: 0,
+        onlineUsers: [],
+        openInvoices: [],
+        openInvoiceCount: 0,
+        openInvoiceTotal: 0,
+        perUser: [],
+      },
+    });
+  }
+
+  it("hat im Kopf einen beschrifteten Knopf, nicht nur ein Symbol", async () => {
+    ({ restore } = mockAngemeldet());
+    render(<App />);
+
+    const knopf = await screen.findByRole("button", { name: "Benachrichtigungen" });
+    expect(knopf).toHaveTextContent("Push");
+  });
+
+  it("öffnet darüber das Eingabefeld für das eigene Thema", async () => {
+    ({ restore } = mockAngemeldet());
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Benachrichtigungen" }));
+
+    expect(await screen.findByRole("dialog", { name: "Benachrichtigungen" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Mein ntfy-Thema")).toBeInTheDocument();
+  });
+});
