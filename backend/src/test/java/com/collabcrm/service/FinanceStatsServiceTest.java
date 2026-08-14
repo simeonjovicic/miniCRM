@@ -1,5 +1,6 @@
 package com.collabcrm.service;
 
+import com.collabcrm.model.ExternalRevenue;
 import com.collabcrm.model.FinanceEntry;
 import com.collabcrm.model.FinanceSettings;
 import com.collabcrm.repository.FinanceEntryRepository;
@@ -281,6 +282,127 @@ class FinanceStatsServiceTest {
         assertThat(openEntries(stats).getFirst()).containsEntry("open", dec("900.00"));
     }
 
+    @Test
+    void markiertDieInterneAnteilsrechnungAlsIntern() {
+        FinanceEntry kundenrechnung = income(ALICE, "alice", "840.00", "0", YEAR);
+        kundenrechnung.setStatus(FinanceService.STATUS_SENT);
+
+        // Die Halfte, die bob dem alice in Rechnung stellt — kein Kundenaussenstand
+        FinanceEntry anteil = income(BOB, "bob", "420.00", "0", YEAR);
+        anteil.setStatus(FinanceService.STATUS_SENT);
+        anteil.setSplitRole(FinanceService.SPLIT_SHARE_IN);
+        anteil.setSplitPartnerUsername("alice");
+
+        givenEntries(kundenrechnung, anteil);
+
+        var rows = openEntries(service.stats(YEAR));
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows)
+                .filteredOn(r -> Boolean.TRUE.equals(r.get("internal")))
+                .singleElement()
+                .satisfies(r -> {
+                    assertThat(r).containsEntry("open", dec("420.00"));
+                    // Wer schuldet, steht in partner — die Richtung ist die Information
+                    assertThat(r).containsEntry("partner", "alice");
+                    assertThat(r).containsEntry("username", "bob");
+                });
+        assertThat(rows)
+                .filteredOn(r -> Boolean.FALSE.equals(r.get("internal")))
+                .singleElement()
+                .satisfies(r -> assertThat(r).containsEntry("open", dec("840.00")));
+    }
+
+    @Test
+    void zaehltDieInterneWeiterverrechnungNichtZumJahresumsatz() {
+        // Kundenauftrag 600 brutto / 500 netto, 50/50 geteilt
+        FinanceEntry kundenrechnung = income(ALICE, "alice", "600.00", "20", YEAR);
+        kundenrechnung.setSplitRole(FinanceService.SPLIT_ORIGIN);
+
+        FinanceEntry anteilBob = income(BOB, "bob", "300.00", "20", YEAR);
+        anteilBob.setSplitRole(FinanceService.SPLIT_SHARE_IN);
+
+        FinanceEntry anteilAlice = expense(ALICE, "alice", "300.00", "20", true, YEAR);
+        anteilAlice.setSplitRole(FinanceService.SPLIT_SHARE_OUT);
+
+        givenEntries(kundenrechnung, anteilBob, anteilAlice);
+
+        var stats = service.stats(YEAR);
+
+        // Verdient wurden 500 netto — nicht 750, wie die Summe der beiden Buecher ergaebe
+        assertThat(stats).containsEntry("totalRevenueGross", dec("600.00"));
+        assertThat(stats).containsEntry("totalRevenueNet", dec("500.00"));
+        assertThat(stats).containsEntry("totalExpenseCost", dec("0.00"));
+        assertThat(stats).containsEntry("totalVatOwed", dec("100.00"));
+        assertThat(stats).containsEntry("totalInputVat", dec("0.00"));
+        // Gewinn und Zahllast waren schon vorher richtig und duerfen sich nicht bewegen
+        assertThat(stats).containsEntry("totalProfit", dec("500.00"));
+        assertThat(stats).containsEntry("totalVatBalance", dec("100.00"));
+
+        // In den Buechern der einzelnen Person bleibt der Anteil stehen
+        assertThat(user(stats, "bob")).containsEntry("revenueGross", dec("300.00"));
+        assertThat(user(stats, "alice")).containsEntry("expenseCost", dec("250.00"));
+    }
+
+    @Test
+    void trenntOffeneKundenforderungVonDerInternenSchuld() {
+        FinanceEntry kundenrechnung = income(ALICE, "alice", "600.00", "20", YEAR);
+        kundenrechnung.setStatus(FinanceService.STATUS_SENT);
+        kundenrechnung.setSplitRole(FinanceService.SPLIT_ORIGIN);
+
+        FinanceEntry anteilBob = income(BOB, "bob", "300.00", "20", YEAR);
+        anteilBob.setStatus(FinanceService.STATUS_SENT);
+        anteilBob.setSplitRole(FinanceService.SPLIT_SHARE_IN);
+
+        givenEntries(kundenrechnung, anteilBob);
+
+        var stats = service.stats(YEAR);
+
+        // Von aussen schuldet uns nur der Kunde
+        assertThat(stats).containsEntry("totalOpen", dec("600.00"));
+        assertThat(stats).containsEntry("totalOpenInternal", dec("300.00"));
+        // In den Finanzen bleiben trotzdem beide Zeilen sichtbar
+        assertThat(openEntries(stats)).hasSize(2);
+    }
+
+    @Test
+    void haeltInterneAnteilsrechnungenVomDashboardFern() {
+        FinanceEntry kundenrechnung = income(ALICE, "alice", "600.00", "20", YEAR);
+        kundenrechnung.setStatus(FinanceService.STATUS_SENT);
+        kundenrechnung.setSplitRole(FinanceService.SPLIT_ORIGIN);
+
+        FinanceEntry anteilBob = income(BOB, "bob", "300.00", "20", YEAR);
+        anteilBob.setStatus(FinanceService.STATUS_SENT);
+        anteilBob.setSplitRole(FinanceService.SPLIT_SHARE_IN);
+
+        givenEntries(kundenrechnung, anteilBob);
+
+        // Auf der Startseite steht nur, was von aussen hereinkommt
+        var open = service.openReceivables();
+
+        assertThat(open).hasSize(1);
+        assertThat(open.getFirst()).containsEntry("open", dec("600.00"));
+    }
+
+    @Test
+    void rechnetDasNettoZumOffenenRestNichtZurGanzenRechnung() {
+        FinanceEntry rechnung = income(ALICE, "alice", "1200.00", "20", YEAR);
+        rechnung.setStatus(FinanceService.STATUS_SENT);
+
+        FinanceEntry anzahlung = income(ALICE, "alice", "600.00", "20", YEAR);
+        anzahlung.setKind(FinanceService.KIND_DEPOSIT);
+        anzahlung.setParentId(idOf(rechnung));
+        anzahlung.setStatus(FinanceService.STATUS_PAID);
+
+        givenEntries(rechnung, anzahlung);
+
+        var row = openEntries(service.stats(YEAR)).getFirst();
+
+        // Offen sind 600 von 1.200 — netto also 500, nicht die 1.000 der Rechnung
+        assertThat(row).containsEntry("open", dec("600.00"));
+        assertThat(row).containsEntry("openNet", dec("500.00"));
+    }
+
     // ── Grenzwerte ────────────────────────────────────────────────────
 
     @Test
@@ -355,6 +477,25 @@ class FinanceStatsServiceTest {
         assertThat(perUser(stats)).isEmpty();
         assertThat(stats).containsEntry("totalProfit", dec("0.00"));
         assertThat(stats).containsEntry("totalOpen", dec("0.00"));
+    }
+
+    @Test
+    void zaehltUmsatzAusserhalbAufDieKleinunternehmergrenze() {
+        givenEntries(income(ALICE, "alice", "10000.00", "20", YEAR));
+        when(settingsService.externalRevenue(YEAR)).thenReturn(List.of(
+                new ExternalRevenue(YEAR, ALICE, "alice", new BigDecimal("5000.00"), "Vermietung")));
+
+        var stats = service.stats(YEAR);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> grenze = (Map<String, Object>) user(stats, "alice").get("smallBusiness");
+
+        // 10.000 im CRM plus 5.000 daneben — die Grenze sieht 15.000
+        assertThat(grenze).containsEntry("current", dec("15000.00"));
+        assertThat(user(stats, "alice")).containsEntry("externalRevenue", dec("5000.00"));
+
+        // Umsatz und Gewinn bleiben davon unberuehrt, es ist ja fremdes Geschaeft
+        assertThat(stats).containsEntry("totalRevenueGross", dec("10000.00"));
     }
 
     // ── Hilfsmittel ───────────────────────────────────────────────────

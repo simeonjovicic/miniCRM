@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import FinancePage from "./FinancePage";
 import { renderWithRouter, mockFetch } from "../test/helpers";
 import { testUser, testUser2, testCustomer } from "../test/fixtures";
-import type { FinanceEntry, FinanceStats } from "../types";
+import type { FinanceEntry, FinanceStats, OpenReceivable } from "../types";
 
 vi.mock("../services/websocket", () => ({
   subscribe: () => () => {},
@@ -61,6 +61,7 @@ const stats: FinanceStats = {
   totalVatBalance: 200,
   totalProfit: 1000,
   totalOpen: 1200,
+  totalOpenInternal: 0,
   perUser: [
     {
       userId: testUser.id,
@@ -73,6 +74,7 @@ const stats: FinanceStats = {
       vatBalance: 200,
       profit: 400,
       openReceivables: 1200,
+      externalRevenue: 0,
       svs: { current: 400, threshold: 6613.2, percent: 6.05, remaining: 6213.2, exceeded: false },
       smallBusiness: { current: 600, threshold: 55000, percent: 1.09, remaining: 54400, exceeded: false },
     },
@@ -86,8 +88,25 @@ const stats: FinanceStats = {
       gross: 1200,
       paid: 0,
       open: 1200,
+      openNet: 1000,
+      internal: false,
+      partner: null,
     },
   ],
+};
+
+/** Die interne Anteilsrechnung aus einer Aufteilung — kein Kundenaussenstand. */
+const internerPosten: OpenReceivable = {
+  id: "f-30",
+  description: "Mr Sham Doggo — Anteil von alice",
+  date: `${YEAR}-06-15`,
+  username: testUser2.username,
+  gross: 420,
+  paid: 0,
+  open: 420,
+  openNet: 350,
+  internal: true,
+  partner: testUser.username,
 };
 
 /** Reihenfolge zählt: mockFetch matcht per includes, /finance/stats muss vor /finance stehen. */
@@ -107,6 +126,14 @@ function form() {
   return within(screen.getByRole("button", { name: "Hinzufügen" }).closest("form")!);
 }
 
+/**
+ * Teilen ist standardmässig an. Für Tests, die nur die USt-Vorschau prüfen,
+ * stört die Aufteilungs-Vorschau mit ihren eigenen Beträgen — hier abschalten.
+ */
+async function ohneAufteilung() {
+  await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
+}
+
 describe("FinancePage", () => {
   let restore: () => void;
 
@@ -119,24 +146,235 @@ describe("FinancePage", () => {
     await waitFor(() => expect(screen.getByText("USt-Zahllast")).toBeInTheDocument());
 
     expect(screen.getByText("ans Finanzamt")).toBeInTheDocument();
-    expect(screen.getByText("verschickt, unbezahlt")).toBeInTheDocument();
+    expect(screen.getByText("brutto · Kunden schulden uns")).toBeInTheDocument();
 
     // Einmal als Gesamtkachel, einmal in der Zeile der Person
-    expect(screen.getAllByText("Umsatz brutto")).toHaveLength(2);
+    expect(screen.getAllByText("Umsatz netto")).toHaveLength(2);
+  });
+
+  it("trennt offene Kundenforderungen von der internen Aufteilung", async () => {
+    ({ restore } = mockFinance({
+      "/finance/stats": {
+        ...stats,
+        openEntries: [...stats.openEntries, internerPosten],
+      },
+    }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    expect(await screen.findByText("Von Kunden")).toBeInTheDocument();
+    expect(screen.getByText(/Intern · Aufteilung/)).toBeInTheDocument();
+
+    // Die Richtung ist beim internen Posten die eigentliche Information
+    expect(
+      screen.getByText(new RegExp(`${testUser.username} schuldet ${testUser2.username}`)),
+    ).toBeInTheDocument();
+
+    // Der maschinelle Zusatz "— Anteil von X" ist raus, er stünde doppelt
+    expect(screen.getByText("Mr Sham Doggo")).toBeInTheDocument();
+
+    // Genau einmal: die Zahl steht in ihrer Zeile und nirgends sonst.
+    // Gruppensummen gibt es nicht mehr, sie waren bei einem Posten identisch.
+    expect(screen.getAllByText("420,00 €")).toHaveLength(1);
+  });
+
+  it("zeigt netto und brutto als Spalten statt an jeder Zahl", async () => {
+    ({ restore } = mockFinance({
+      "/finance/stats": {
+        ...stats,
+        openEntries: [...stats.openEntries, internerPosten],
+      },
+    }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Die Einheit steht einmal als Spaltenkopf, nicht an jedem Betrag
+    const card = within((await screen.findByText("Offene Posten")).closest("div")!.parentElement!);
+    expect(card.getByText("Netto")).toBeInTheDocument();
+    expect(card.getByText("Brutto")).toBeInTheDocument();
+
+    // Beide Werte je Zeile, jeder genau einmal
+    for (const value of ["1.000,00 €", "1.200,00 €", "350,00 €", "420,00 €"]) {
+      expect(card.getAllByText(value)).toHaveLength(1);
+    }
+
+    // Keine gemeinsame Summe: "Kunden schulden uns" und "wir uns gegenseitig"
+    // sind zwei Zahlen. 1.620 waere genau die Vermischung, die es nicht gibt.
+    expect(card.queryByText("1.620,00 €")).not.toBeInTheDocument();
+  });
+
+  it("summiert je Gruppe, sobald sie mehr als einen Posten hat", async () => {
+    const zweiterKunde: OpenReceivable = {
+      ...stats.openEntries[0],
+      id: "f-40",
+      description: "Zweiter Auftrag",
+      gross: 600,
+      open: 600,
+      openNet: 500,
+    };
+    ({ restore } = mockFinance({
+      "/finance/stats": {
+        ...stats,
+        openEntries: [...stats.openEntries, zweiterKunde, internerPosten],
+      },
+    }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Kunden: 1.200 + 600 = 1.800 brutto, 1.000 + 500 = 1.500 netto
+    await screen.findByText("Von Kunden");
+    expect(screen.getByText("1.800,00 €")).toBeInTheDocument();
+    expect(screen.getByText("1.500,00 €")).toBeInTheDocument();
+
+    // Der interne Block hat nur einen Posten und bekommt daher keine Summe
+    expect(screen.getAllByText("420,00 €")).toHaveLength(1);
+  });
+
+  it("lässt die Summenzeile bei einem einzigen Posten weg", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await screen.findByText("Offene Posten");
+    // Sie wäre wörtlich die Zeile darüber noch einmal
+    expect(screen.queryByText("Summe")).not.toBeInTheDocument();
+  });
+
+  it("lässt den internen Block weg, wenn es keine Aufteilung gibt", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    expect(await screen.findByText("Von Kunden")).toBeInTheDocument();
+    expect(screen.queryByText(/Intern · Aufteilung/)).not.toBeInTheDocument();
+  });
+
+  it("führt den Umsatz netto und nennt brutto nur als Nebenwert", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // 1.200 brutto bei 200 USt → 1.000 netto ist die Hauptzahl
+    await waitFor(() => expect(screen.getAllByText("1.000,00 €").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("1.200,00 € brutto").length).toBeGreaterThan(0);
+  });
+
+  it("nimmt Umsatz außerhalb des CRM in die Kleinunternehmergrenze auf", async () => {
+    ({ restore } = mockFinance({
+      "/finance/stats": {
+        ...stats,
+        perUser: [{ ...stats.perUser[0], externalRevenue: 5000 }],
+      },
+    }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Am Meter muss stehen, woher der höhere Stand kommt
+    expect(await screen.findByText(/inkl\. 5\.000,00 € außerhalb/)).toBeInTheDocument();
+  });
+
+  it("bietet je Person ein Feld für Umsatz außerhalb", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Einstellungen/ }));
+
+    expect(
+      screen.getByLabelText(`Umsatz außerhalb — ${testUser.username}`),
+    ).toBeInTheDocument();
   });
 
   it("zeigt beide Grenzwert-Balken mit ihrer Bemessungsgrundlage", async () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    const svs = await screen.findByRole("progressbar", { name: "SVS-Versicherungsgrenze" });
-    const kleinunternehmer = screen.getByRole("progressbar", { name: "Kleinunternehmergrenze" });
+    // Der Name der Person steht im Label, damit die Grenzen bei mehreren
+    // Personen unterscheidbar bleiben — im Chart trennt sie die Farbe.
+    const svs = await screen.findByRole("progressbar", {
+      name: `SVS-Versicherungsgrenze — ${testUser.username}`,
+    });
+    const kleinunternehmer = screen.getByRole("progressbar", {
+      name: `Kleinunternehmergrenze — ${testUser.username}`,
+    });
 
     expect(svs).toHaveAttribute("aria-valuenow", "6");
     expect(kleinunternehmer).toHaveAttribute("aria-valuenow", "1");
 
     expect(screen.getByText("Basis: Gewinn")).toBeInTheDocument();
     expect(screen.getByText("Basis: Umsatz brutto")).toBeInTheDocument();
+  });
+
+  /**
+   * Zwei Personen, die eingeloggte bewusst an zweiter Stelle der Serverantwort
+   * und mit einem unverwechselbaren Gewinn, damit der Umschalter prüfbar ist.
+   */
+  function mockTwoPeople() {
+    return mockFinance({
+      "/finance/stats": {
+        ...stats,
+        perUser: [
+          {
+            ...stats.perUser[0],
+            userId: testUser2.id,
+            username: testUser2.username,
+            profit: 12345.67,
+          },
+          stats.perUser[0],
+        ],
+      },
+    });
+  }
+
+  it("fasst Grenzen und Kennzahlen beider Personen in einem Element zusammen", async () => {
+    ({ restore } = mockTwoPeople());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Eine Überschrift, egal wie viele Personen — nicht eine Karte pro Person
+    expect(await screen.findAllByText("Grenzwerte & Kennzahlen")).toHaveLength(1);
+
+    // Zum Vergleichen stehen beide Meter nebeneinander, unabhängig vom Umschalter
+    for (const name of [testUser.username, testUser2.username]) {
+      expect(
+        screen.getByRole("progressbar", { name: `SVS-Versicherungsgrenze — ${name}` }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("übersteht ein Jahr ohne Einträge", async () => {
+    ({ restore } = mockFinance({
+      "/finance/stats": { ...stats, perUser: [], openEntries: [] },
+    }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Ohne Person gibt es nichts anzuzeigen — aber die Seite muss stehen
+    await waitFor(() => expect(screen.getByText("USt-Zahllast")).toBeInTheDocument());
+    expect(screen.queryByText("Grenzwerte & Kennzahlen")).not.toBeInTheDocument();
+  });
+
+  it("stellt die eingeloggte Person an die erste Stelle", async () => {
+    ({ restore } = mockTwoPeople());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    const toggle = within(
+      await screen.findByRole("group", { name: "Kennzahlen einer Person anzeigen" }),
+    );
+    const buttons = toggle.getAllByRole("button");
+
+    expect(buttons[0]).toHaveTextContent(testUser.username);
+    expect(buttons[1]).toHaveTextContent(testUser2.username);
+    // und ist ohne Zutun ausgewählt
+    expect(buttons[0]).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("schaltet den Kennzahlen-Block auf die gewählte Person um", async () => {
+    ({ restore } = mockTwoPeople());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Gezielt der Umschalter — den Namen trägt auch der Filter der Einträge-Liste
+    const toggle = within(
+      await screen.findByRole("group", { name: "Kennzahlen einer Person anzeigen" }),
+    );
+
+    // Startzustand: der eigene Gewinn, nicht der der anderen Person
+    expect(screen.queryByText("12.345,67 €")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle.getByRole("button", { name: testUser2.username }));
+
+    expect(screen.getByText("12.345,67 €")).toBeInTheDocument();
   });
 
   it("markiert eine überschrittene Grenze", async () => {
@@ -181,6 +419,7 @@ describe("FinancePage", () => {
     renderWithRouter(<FinancePage user={testUser} />);
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await ohneAufteilung();
     await userEvent.type(screen.getByLabelText("Betrag"), "100");
     await userEvent.click(screen.getByRole("button", { name: "Netto" }));
 
@@ -194,6 +433,7 @@ describe("FinancePage", () => {
     renderWithRouter(<FinancePage user={testUser} />);
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await ohneAufteilung();
     await userEvent.type(screen.getByLabelText("Betrag"), "250");
     await userEvent.selectOptions(screen.getByLabelText("USt-Satz"), "0");
 
@@ -210,7 +450,7 @@ describe("FinancePage", () => {
     await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
 
     const options = within(screen.getByLabelText("Status")).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["Gesendet", "Bezahlt", "Anzahlung"]);
+    expect(options.map((o) => o.textContent)).toEqual(["Offen", "Bezahlt", "Anzahlung"]);
   });
 
   it("bietet bei Ausgaben keine Anzahlung und nennt offen auch so", async () => {
@@ -224,7 +464,39 @@ describe("FinancePage", () => {
     expect(options.map((o) => o.textContent)).toEqual(["Offen", "Bezahlt"]);
   });
 
-  it("bietet Aufteilung nur bei Einnahmen", async () => {
+  it("hat den 50/50-Haken von vornherein gesetzt", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    // Zu zweit ist Teilen der Normalfall
+    const haken = await screen.findByRole("checkbox", { name: /50\/50 geteilt mit/ });
+    expect(haken).toBeChecked();
+  });
+
+  it("teilt einen bestehenden Eintrag beim Speichern nicht nachträglich", async () => {
+    const mocked = mockFinance({ "PUT /finance": rechnung });
+    restore = mocked.restore;
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    await userEvent.click(table.getByRole("button", { name: /Projekt Website bearbeiten/ }));
+
+    // Beim Bearbeiten ist der Haken aus, sonst wuerde blosses Speichern halbieren
+    expect(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ })).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    const put = mocked.mock.mock.calls.find(
+      ([, init]) => (init as RequestInit)?.method === "PUT",
+    );
+    expect(put).toBeDefined();
+    const body = JSON.parse(String((put![1] as RequestInit).body));
+    expect(body.sharedWithUserId).toBeUndefined();
+  });
+
+  it("bietet Aufteilung für Einnahmen wie für Ausgaben", async () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
@@ -233,8 +505,24 @@ describe("FinancePage", () => {
 
     await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
 
-    expect(screen.queryByText(/50\/50 geteilt mit/)).not.toBeInTheDocument();
+    // Auch Kosten sollen beide zur Hälfte tragen
+    expect(screen.getByText(/50\/50 geteilt mit/)).toBeInTheDocument();
     expect(screen.getByText("Vorsteuer abziehbar")).toBeInTheDocument();
+  });
+
+  it("kündigt bei geteilten Ausgaben zwei Buchungen statt drei an", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByLabelText("Art")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
+    await userEvent.type(screen.getByLabelText("Betrag"), "600");
+
+    const preview = within(screen.getByTestId("split-preview"));
+    expect(preview.getByText(/Es entstehen zwei Buchungen/)).toBeInTheDocument();
+    // 600 brutto bei 20 % → je 300 brutto, Gewinn je −250
+    expect(preview.getAllByText("300,00 €")).toHaveLength(2);
+    expect(preview.getByText("250,00 €")).toBeInTheDocument();
   });
 
   it("setzt den Status beim Wechsel auf Ausgabe auf bezahlt", async () => {
@@ -270,7 +558,6 @@ describe("FinancePage", () => {
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("Betrag"), "1200");
-    await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
 
     const split = within(screen.getByTestId("split-preview"));
 
@@ -291,7 +578,6 @@ describe("FinancePage", () => {
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("Betrag"), "1200");
-    await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
 
     const split = within(screen.getByTestId("split-preview"));
 
@@ -306,7 +592,6 @@ describe("FinancePage", () => {
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("Betrag"), "1000");
     await userEvent.selectOptions(screen.getByLabelText("USt-Satz"), "0");
-    await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
 
     const split = within(screen.getByTestId("split-preview"));
 
@@ -356,7 +641,7 @@ describe("FinancePage", () => {
 
     const menu = within(screen.getByRole("listbox", { name: "Status wählen" }));
     expect(menu.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Gesendet",
+      "Offen",
       "Bezahlt",
       "Anzahlung",
     ]);
@@ -370,7 +655,7 @@ describe("FinancePage", () => {
     await userEvent.click(table.getByRole("button", { name: /Status von Projekt Website/ }));
 
     const menu = within(screen.getByRole("listbox", { name: "Status wählen" }));
-    expect(menu.getByRole("option", { name: "Gesendet" })).toHaveAttribute("aria-selected", "true");
+    expect(menu.getByRole("option", { name: "Offen" })).toHaveAttribute("aria-selected", "true");
     expect(menu.getByRole("option", { name: "Bezahlt" })).toHaveAttribute("aria-selected", "false");
   });
 
@@ -450,7 +735,6 @@ describe("FinancePage", () => {
     renderWithRouter(<FinancePage user={testUser} />);
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
 
     expect(screen.queryByTestId("split-preview")).not.toBeInTheDocument();
   });
@@ -472,6 +756,26 @@ describe("FinancePage", () => {
     expect(screen.getByLabelText("Status")).toHaveValue("SENT");
 
     await waitFor(() => expect(screen.getByLabelText("Betrag")).toHaveFocus());
+  });
+
+  it("kehrt nach dem Speichern in den Hinzufügen-Modus zurück", async () => {
+    ({ restore } = mockFinance({ "PUT /finance": rechnung }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    await userEvent.click(table.getByRole("button", { name: /Projekt Website bearbeiten/ }));
+    expect(screen.getByText("Eintrag bearbeiten")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    // Danach muss man sofort wieder etwas Neues anlegen können
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Hinzufügen" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Eintrag bearbeiten")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Betrag")).toHaveValue(null);
   });
 
   it("lädt eine Anzahlung als Status Anzahlung ins Formular", async () => {
@@ -506,7 +810,7 @@ describe("FinancePage", () => {
     await waitFor(() => expect(screen.getAllByText("Projekt Website").length).toBeGreaterThan(0));
 
     const table = within(screen.getByRole("table"));
-    expect(table.getByText("Gesendet")).toBeInTheDocument();
+    expect(table.getByText("Offen")).toBeInTheDocument();
     expect(table.getByText(/200,00.*\(20%\)/)).toBeInTheDocument();
   });
 
@@ -518,6 +822,44 @@ describe("FinancePage", () => {
 
     const table = within(screen.getByRole("table"));
     expect(table.getByText(`50/50 · ${testUser2.username}`)).toBeInTheDocument();
+  });
+
+  it("merkt an der Kundenrechnung an, welcher Anteil an den Partner geht", async () => {
+    // Vollständige Aufteilung: die volle Rechnung plus die Gegenbuchung daneben
+    const kundenrechnung: FinanceEntry = {
+      ...rechnung,
+      id: "f-20",
+      amount: 1200,
+      description: "Geteiltes Projekt",
+      splitGroupId: "group-2",
+      splitRole: "ORIGIN",
+      splitPartnerUsername: testUser2.username,
+    };
+    const gegenbuchung: FinanceEntry = {
+      ...rechnung,
+      id: "f-21",
+      amount: 600,
+      netAmount: 500,
+      vatAmount: 100,
+      type: "EXPENSE",
+      // Bewusst nicht "Anteil an bob" wie beim Server, sonst träfe die
+      // Assertion unten die Beschreibung statt das Badge.
+      description: "Interne Anteilsrechnung",
+      splitGroupId: "group-2",
+      splitRole: "SHARE_OUT",
+      splitPartnerUsername: testUser2.username,
+    };
+
+    ({ restore } = mockFinance({ "/finance": [kundenrechnung, gegenbuchung] }));
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await waitFor(() => expect(screen.getAllByText("Geteiltes Projekt").length).toBeGreaterThan(0));
+
+    const table = within(screen.getByRole("table"));
+    // 600 von 1.200 — der Prozentsatz kommt aus den Beträgen, nicht aus einer Konstante
+    expect(table.getByText(`davon 50 % an ${testUser2.username}`)).toBeInTheDocument();
+    // Die Gegenbuchung ist selbst der Anteil und behält ihre eigene Beschriftung
+    expect(table.getByText(`Anteil an ${testUser2.username}`)).toBeInTheDocument();
   });
 
   it("blendet beim Bearbeiten einer Hälfte den Teilen-Haken aus", async () => {

@@ -85,8 +85,41 @@ public class FinanceStatsService {
         BigDecimal vatBalance() { return vatOwed.subtract(inputVat); }
     }
 
+    /**
+     * Was aus einer Aufteilung nur zwischen den beiden hin- und hergeht.
+     *
+     * In den Buechern der einzelnen Person ist die Anteilsrechnung echter Umsatz
+     * bzw. echter Aufwand — dort muss sie stehen bleiben, sie zaehlt etwa auf die
+     * Kleinunternehmergrenze. Fuer die Jahressumme ueber BEIDE waere sie aber
+     * doppelt gezaehlt: derselbe Kundenauftrag einmal beim Ersteller und einmal
+     * als interne Weiterverrechnung. Deshalb hier mitgefuehrt und am Ende abgezogen.
+     */
+    private static final class Internal {
+        BigDecimal revenueGross = zero();
+        BigDecimal vatOwed = zero();
+        BigDecimal expenseCost = zero();
+        BigDecimal inputVat = zero();
+        BigDecimal open = zero();
+    }
+
+    /** Die beiden Haelften einer Aufteilung — die Kundenrechnung selbst zaehlt normal. */
+    private static boolean isInternalShare(FinanceEntry entry) {
+        return FinanceService.SPLIT_SHARE_IN.equals(entry.getSplitRole())
+                || FinanceService.SPLIT_SHARE_OUT.equals(entry.getSplitRole());
+    }
+
     public Map<String, Object> stats(int year) {
         FinanceSettings settings = settingsService.forYear(year);
+
+        /*
+          Umsaetze ausserhalb dieses CRM. Die Kleinunternehmergrenze gilt pro
+          Person ueber ALLE ihre Umsaetze — was hier nicht erfasst ist, muss
+          trotzdem mitzaehlen, sonst wirkt die Grenze weiter weg als sie ist.
+        */
+        Map<UUID, BigDecimal> external = new HashMap<>();
+        for (var row : settingsService.externalRevenue(year)) {
+            external.merge(row.getUserId(), orZero(row.getAmount()), BigDecimal::add);
+        }
         boolean splitGross = !FinanceSettingsService.SPLIT_NET.equals(settings.getSplitBasis());
 
         List<FinanceEntry> all = repository.findAllByOrderByDateDescCreatedAtDesc();
@@ -98,17 +131,18 @@ public class FinanceStatsService {
 
         Map<UUID, Totals> byUser = new LinkedHashMap<>();
         List<Map<String, Object>> openEntries = new ArrayList<>();
+        Internal internal = new Internal();
 
         for (FinanceEntry entry : inYear) {
             if (FinanceService.TYPE_EXPENSE.equals(entry.getType())) {
-                applyExpense(byUser, entry);
+                applyExpense(byUser, entry, internal);
             } else {
-                applyIncome(byUser, entry, splitGross);
-                collectOpenReceivable(byUser, entry, paidDepositsByParent, openEntries);
+                applyIncome(byUser, entry, splitGross, internal);
+                collectOpenReceivable(byUser, entry, paidDepositsByParent, openEntries, internal);
             }
         }
 
-        return buildResponse(year, settings, byUser, openEntries);
+        return buildResponse(year, settings, byUser, openEntries, internal, external);
     }
 
     /**
@@ -116,13 +150,22 @@ public class FinanceStatsService {
      * die USt holt man sich zurück. Ist sie es nicht (Bewirtung, Privatanteil,
      * Beleg ohne USt-Ausweis), sind die vollen Bruttokosten Aufwand.
      */
-    private void applyExpense(Map<UUID, Totals> byUser, FinanceEntry entry) {
+    private void applyExpense(Map<UUID, Totals> byUser, FinanceEntry entry, Internal internal) {
         Totals t = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
         boolean deductible = Boolean.TRUE.equals(entry.getVatDeductible());
 
-        t.expenseCost = t.expenseCost.add(deductible ? net(entry) : gross(entry));
+        BigDecimal cost = deductible ? net(entry) : gross(entry);
+        t.expenseCost = t.expenseCost.add(cost);
         if (deductible) {
             t.inputVat = t.inputVat.add(vat(entry));
+        }
+
+        // Dieselbe Formel, damit sich der Abzug in der Jahressumme exakt aufhebt.
+        if (isInternalShare(entry)) {
+            internal.expenseCost = internal.expenseCost.add(cost);
+            if (deductible) {
+                internal.inputVat = internal.inputVat.add(vat(entry));
+            }
         }
     }
 
@@ -130,13 +173,19 @@ public class FinanceStatsService {
      * Einnahmen. Verknüpfte Anzahlungen werden übersprungen — sie sind Zahlungen
      * auf eine bereits erfasste Rechnung und kein eigener Umsatz.
      */
-    private void applyIncome(Map<UUID, Totals> byUser, FinanceEntry entry, boolean splitGross) {
+    private void applyIncome(Map<UUID, Totals> byUser, FinanceEntry entry, boolean splitGross,
+                             Internal internal) {
         if (entry.isLinkedDeposit()) return;
 
         Totals creator = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
 
         // Die USt schuldet immer nur der Rechnungssteller, unabhängig von der Aufteilung.
         creator.vatOwed = creator.vatOwed.add(vat(entry));
+
+        if (isInternalShare(entry)) {
+            internal.revenueGross = internal.revenueGross.add(gross(entry));
+            internal.vatOwed = internal.vatOwed.add(vat(entry));
+        }
 
         if (!entry.isShared()) {
             creator.revenueGross = creator.revenueGross.add(gross(entry));
@@ -162,7 +211,8 @@ public class FinanceStatsService {
      */
     private void collectOpenReceivable(Map<UUID, Totals> byUser, FinanceEntry entry,
                                        Map<UUID, BigDecimal> paidDepositsByParent,
-                                       List<Map<String, Object>> openEntries) {
+                                       List<Map<String, Object>> openEntries,
+                                       Internal internal) {
         if (!FinanceService.STATUS_SENT.equals(entry.getStatus()) || entry.isLinkedDeposit()) return;
 
         BigDecimal paid = paidDepositsByParent.getOrDefault(entry.getId(), zero());
@@ -171,6 +221,9 @@ public class FinanceStatsService {
 
         Totals t = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
         t.openReceivables = t.openReceivables.add(open);
+        if (isInternalShare(entry)) {
+            internal.open = internal.open.add(open);
+        }
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", entry.getId().toString());
@@ -180,14 +233,26 @@ public class FinanceStatsService {
         row.put("gross", gross(entry));
         row.put("paid", paid);
         row.put("open", open);
+        // Netto zum RESTbetrag, nicht zur ganzen Rechnung: nach einer Anzahlung
+        // ist der offene Teil kleiner, und nur der steht hier zur Debatte.
+        row.put("openNet", VatCalculator.fromGross(open, entry.getVatRate()).netAmount());
+        // Die interne Anteilsrechnung ist kein Aussenstand beim Kunden, sondern
+        // eine Umbuchung unter den beiden. Die Liste trennt das danach auf.
+        row.put("internal", FinanceService.SPLIT_SHARE_IN.equals(entry.getSplitRole()));
+        row.put("partner", entry.getSplitPartnerUsername());
         openEntries.add(row);
     }
 
     /**
-     * Alle offenen Forderungen, jahresübergreifend — für das Dashboard.
+     * Offene KUNDENforderungen, jahresübergreifend — für das Dashboard.
      *
      * Bewusst ohne Jahresgrenze: eine Rechnung vom Dezember, die im Januar noch
      * offen ist, gehört genau dann auf die Startseite.
+     *
+     * Interne Anteilsrechnungen bleiben draussen: auf der Startseite steht die
+     * Frage "wer schuldet uns noch Geld von aussen". Was einer von beiden dem
+     * anderen schuldet, aendert am Geld der Firma nichts und wird nur in den
+     * Finanzen gefuehrt.
      */
     public List<Map<String, Object>> openReceivables() {
         List<FinanceEntry> all = repository.findAllByOrderByDateDescCreatedAtDesc();
@@ -197,6 +262,7 @@ public class FinanceStatsService {
         for (FinanceEntry entry : all) {
             if (!FinanceService.TYPE_INCOME.equals(entry.getType())) continue;
             if (!FinanceService.STATUS_SENT.equals(entry.getStatus()) || entry.isLinkedDeposit()) continue;
+            if (isInternalShare(entry)) continue;
 
             BigDecimal paid = paidDeposits.getOrDefault(entry.getId(), zero());
             BigDecimal rest = gross(entry).subtract(paid);
@@ -229,7 +295,9 @@ public class FinanceStatsService {
 
     private Map<String, Object> buildResponse(int year, FinanceSettings settings,
                                               Map<UUID, Totals> byUser,
-                                              List<Map<String, Object>> openEntries) {
+                                              List<Map<String, Object>> openEntries,
+                                              Internal internal,
+                                              Map<UUID, BigDecimal> external) {
         BigDecimal totalRevenueGross = zero();
         BigDecimal totalExpenseCost = zero();
         BigDecimal totalVatOwed = zero();
@@ -256,7 +324,10 @@ public class FinanceStatsService {
             row.put("profit", t.profit());
             row.put("openReceivables", t.openReceivables);
             row.put("svs", thresholdProgress(t.profit(), settings.getSvsThreshold()));
-            row.put("smallBusiness", thresholdProgress(t.revenueGross, settings.getSmallBusinessThreshold()));
+            BigDecimal outside = external.getOrDefault(t.userId, zero());
+            row.put("externalRevenue", outside);
+            row.put("smallBusiness",
+                    thresholdProgress(t.revenueGross.add(outside), settings.getSmallBusinessThreshold()));
             perUser.add(row);
         }
         perUser.sort(Comparator.comparing(r -> String.valueOf(r.get("username"))));
@@ -267,17 +338,32 @@ public class FinanceStatsService {
         settingsOut.put("smallBusinessThreshold", settings.getSmallBusinessThreshold());
         settingsOut.put("splitBasis", settings.getSplitBasis());
 
+        /*
+          Jahressumme ueber BEIDE: die interne Weiterverrechnung fliegt raus,
+          sonst stuende derselbe Kundenauftrag zweimal im Umsatz. Am Gewinn und
+          an der Zahllast aendert das nichts — dort hoben sich die beiden Seiten
+          schon vorher gegenseitig auf.
+        */
+        BigDecimal groupRevenueGross = totalRevenueGross.subtract(internal.revenueGross);
+        BigDecimal groupVatOwed = totalVatOwed.subtract(internal.vatOwed);
+        BigDecimal groupExpenseCost = totalExpenseCost.subtract(internal.expenseCost);
+        BigDecimal groupInputVat = totalInputVat.subtract(internal.inputVat);
+        BigDecimal groupRevenueNet = groupRevenueGross.subtract(groupVatOwed);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("year", year);
         out.put("settings", settingsOut);
-        out.put("totalRevenueGross", totalRevenueGross);
-        out.put("totalRevenueNet", totalRevenueGross.subtract(totalVatOwed));
-        out.put("totalExpenseCost", totalExpenseCost);
-        out.put("totalVatOwed", totalVatOwed);
-        out.put("totalInputVat", totalInputVat);
-        out.put("totalVatBalance", totalVatOwed.subtract(totalInputVat));
-        out.put("totalProfit", totalRevenueGross.subtract(totalVatOwed).subtract(totalExpenseCost));
-        out.put("totalOpen", totalOpen);
+        out.put("totalRevenueGross", groupRevenueGross);
+        out.put("totalRevenueNet", groupRevenueNet);
+        out.put("totalExpenseCost", groupExpenseCost);
+        out.put("totalVatOwed", groupVatOwed);
+        out.put("totalInputVat", groupInputVat);
+        out.put("totalVatBalance", groupVatOwed.subtract(groupInputVat));
+        out.put("totalProfit", groupRevenueNet.subtract(groupExpenseCost));
+        // "Offen" heisst: ein Kunde schuldet uns Geld. Was einer von beiden dem
+        // anderen schuldet, steht daneben und wird nie dazugezaehlt.
+        out.put("totalOpen", totalOpen.subtract(internal.open));
+        out.put("totalOpenInternal", internal.open);
         out.put("perUser", perUser);
         out.put("openEntries", openEntries);
         return out;

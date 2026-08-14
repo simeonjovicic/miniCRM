@@ -114,10 +114,15 @@ export interface FinanceEntry {
   /** Klammer um die drei Buchungen einer geteilten Einnahme */
   splitGroupId?: string;
   /**
-   * Rolle in der Aufteilung: ORIGIN ist die volle Kundenrechnung, SHARE_IN die
+   * Rolle in der Aufteilung.
+   *
+   * Bei geteilten EINNAHMEN: ORIGIN ist die volle Kundenrechnung, SHARE_IN die
    * Anteilsrechnung des Partners, SHARE_OUT dieselbe Rechnung als Aufwand.
+   *
+   * Bei geteilten AUSGABEN gibt es nur HALF — zwei gleichwertige Hälften ohne
+   * interne Verrechnung, beide zählen als echter Aufwand.
    */
-  splitRole?: "ORIGIN" | "SHARE_IN" | "SHARE_OUT";
+  splitRole?: "ORIGIN" | "SHARE_IN" | "SHARE_OUT" | "HALF";
   /** Die jeweils andere Person einer geteilten Buchung */
   splitPartnerUsername?: string;
   /** Verknüpfter Kunde, gesetzt über die @-Erwähnung */
@@ -157,6 +162,8 @@ export interface FinanceUserStats {
   vatBalance: number;
   profit: number;
   openReceivables: number;
+  /** Umsatz ausserhalb dieses CRM, zaehlt auf die Kleinunternehmergrenze */
+  externalRevenue: number;
   svs: ThresholdProgress;
   smallBusiness: ThresholdProgress;
 }
@@ -175,10 +182,31 @@ export interface OpenReceivable {
   id: string;
   description: string;
   date: string;
+  /** Wem das Geld zusteht */
   username: string | null;
   gross: number;
   paid: number;
+  /** Offener Restbetrag brutto — das, was noch überwiesen wird */
   open: number;
+  /** Derselbe Restbetrag ohne USt */
+  openNet: number;
+  /**
+   * Interne Anteilsrechnung aus einer Aufteilung statt einer Kundenforderung —
+   * hier schuldet der Partner, nicht der Kunde.
+   */
+  internal: boolean;
+  /** Bei internen Posten: wer schuldet */
+  partner: string | null;
+}
+
+/** Umsatz einer Person, der nicht in diesem CRM erfasst ist */
+export interface ExternalRevenue {
+  id: string;
+  year: number;
+  userId: string;
+  username: string | null;
+  amount: number;
+  note: string | null;
 }
 
 export interface FinanceStats {
@@ -191,7 +219,10 @@ export interface FinanceStats {
   totalInputVat: number;
   totalVatBalance: number;
   totalProfit: number;
+  /** Was Kunden uns noch schulden — ohne die interne Verrechnung */
   totalOpen: number;
+  /** Was einer von beiden dem anderen aus einer Aufteilung schuldet */
+  totalOpenInternal: number;
   perUser: FinanceUserStats[];
   openEntries: OpenReceivable[];
 }

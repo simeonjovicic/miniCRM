@@ -221,4 +221,33 @@ describe("DashboardPage", () => {
     const link = await screen.findByRole("link", { name: /2\.000,00/ });
     expect(link).toHaveAttribute("href", "/finance");
   });
+
+  it("macht die ganze Unbezahlt-Karte zum Link in die Finanzen", async () => {
+    ({ restore } = mockDashboard());
+    renderWithRouter(<DashboardPage user={testUser} />);
+
+    const link = await screen.findByRole("link", { name: /Unbezahlt/ });
+    expect(link).toHaveAttribute("href", "/finance");
+
+    // Nicht nur die Überschrift: Betrag und Rechnungszeilen liegen mit im Link
+    const card = within(link);
+    expect(card.getByRole("heading", { name: "Unbezahlt" })).toBeInTheDocument();
+    expect(card.getByText("Projekt Website")).toBeInTheDocument();
+    expect(card.getByText(/seit 42 Tagen/)).toBeInTheDocument();
+
+    // Verschachtelte Links wären ungültiges HTML — es darf genau dieser eine sein
+    expect(link.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("bleibt anklickbar, wenn nichts offen ist", async () => {
+    ({ restore } = mockDashboard({
+      openInvoices: [],
+      openInvoiceCount: 0,
+      openInvoiceTotal: 0,
+    }));
+    renderWithRouter(<DashboardPage user={testUser} />);
+
+    const link = await screen.findByRole("link", { name: /Unbezahlt/ });
+    expect(link).toHaveAttribute("href", "/finance");
+  });
 });
