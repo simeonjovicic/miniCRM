@@ -18,7 +18,6 @@ const todo: TodoItem = {
   id: "t-1",
   title: "Angebot rausschicken",
   done: false,
-  priority: "MEDIUM",
   dueDate: null,
   notes: null,
   commentCount: 0,
@@ -40,6 +39,10 @@ const comment: TodoComment = {
 function mockTodos(overrides: Record<string, unknown> = {}) {
   return mockFetch({
     "/todos/t-1/comments": [],
+    // Muss vor "/todos" stehen und braucht eine Antwort: schlaegt das
+    // Umsortieren fehl, holt die Seite den Serverstand und die Liste springt
+    // zurueck — der Test saehe dann aus, als haette das Umsortieren nicht gewirkt.
+    "PUT /todos/order": { reordered: 0 },
     "/todos": [todo],
     "/customers": [testCustomer],
     "/users": [testUser, testUser2],
@@ -372,13 +375,188 @@ describe("TodosPage", () => {
     expect(await screen.findByText(/Braucht ein Fälligkeitsdatum/)).toBeInTheDocument();
   });
 
+  // ── Wartet auf Kunden ───────────────────────────────────────────
+
+  /** Ein eigener Abschnitt, damit die obere Liste beantwortet, was dran ist. */
+  it("setzt Wartendes in einen eigenen Abschnitt ab", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Kann ich machen" },
+        { ...todo, id: "t-2", title: "Wartet auf Acme", waiting: true },
+      ],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Kann ich machen")).toBeInTheDocument());
+
+    const offen = within(screen.getByRole("list", { name: "Offene Todos" }));
+    const wartend = within(screen.getByRole("list", { name: "Wartet auf Kunden" }));
+
+    expect(offen.getByText("Kann ich machen")).toBeInTheDocument();
+    expect(offen.queryByText("Wartet auf Acme")).not.toBeInTheDocument();
+    expect(wartend.getByText("Wartet auf Acme")).toBeInTheDocument();
+  });
+
+  it("nennt die Zahl der wartenden in der Überschrift", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "A", waiting: true },
+        { ...todo, id: "t-2", title: "B", waiting: true },
+        { ...todo, id: "t-3", title: "C" },
+      ],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    expect(await screen.findByText("Wartet auf Kunden (2)")).toBeInTheDocument();
+  });
+
+  it("zeigt den Abschnitt nicht, solange nichts wartet", async () => {
+    ({ restore } = mockTodos());
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    expect(screen.queryByRole("list", { name: "Wartet auf Kunden" })).not.toBeInTheDocument();
+  });
+
+  /** Zurueckholen muss genauso einen Klick kosten wie das Parken. */
+  it("holt Wartendes per Klick wieder zurück", async () => {
+    const m = mockTodos({ "/todos": [{ ...todo, waiting: true }] });
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /wieder aufnehmen/ }));
+
+    await waitFor(() => {
+      const put = m.mock.mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(JSON.parse(put![1]!.body as string)).toMatchObject({ waiting: false });
+    });
+  });
+
+  /** Erledigtes wartet nicht — der Schalter waere dort sinnlos. */
+  it("bietet den Warte-Schalter bei Erledigtem nicht an", async () => {
+    ({ restore } = mockTodos({ "/todos": [{ ...todo, done: true }] }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Erledigt (1)")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /warten lassen/ })).not.toBeInTheDocument();
+  });
+
+  // ── Reihenfolge ─────────────────────────────────────────────────
+
+  it("zeigt die Todos in der Reihenfolge, die der Server liefert", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Zuerst" },
+        { ...todo, id: "t-2", title: "Dann" },
+        { ...todo, id: "t-3", title: "Zuletzt" },
+      ],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Zuerst")).toBeInTheDocument());
+    const zeilen = within(screen.getByRole("list", { name: "Offene Todos" })).getAllByRole("listitem");
+    expect(zeilen.map((li) => li.textContent)).toEqual([
+      expect.stringContaining("Zuerst"),
+      expect.stringContaining("Dann"),
+      expect.stringContaining("Zuletzt"),
+    ]);
+  });
+
+  /**
+   * Ziehen geht per Maus, in jsdom aber nicht — die Pfeile sind ohnehin der Weg
+   * per Tastatur und am Handy, und hier der pruefbare.
+   */
+  it("schickt die neue Reihenfolge, wenn man eine Zeile hochschiebt", async () => {
+    const m = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Zuerst" },
+        { ...todo, id: "t-2", title: "Dann" },
+        { ...todo, id: "t-3", title: "Zuletzt" },
+      ],
+    });
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Zuletzt")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: '"Zuletzt" nach oben' }));
+
+    await waitFor(() => {
+      const call = m.mock.mock.calls.find(([url]) => String(url).includes("/todos/order"));
+      expect(JSON.parse(call![1]!.body as string)).toEqual({ ids: ["t-1", "t-3", "t-2"] });
+    });
+  });
+
+  it("schiebt eine Zeile auch wieder nach unten", async () => {
+    const m = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Zuerst" },
+        { ...todo, id: "t-2", title: "Dann" },
+      ],
+    });
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Zuerst")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: '"Zuerst" nach unten' }));
+
+    await waitFor(() => {
+      const call = m.mock.mock.calls.find(([url]) => String(url).includes("/todos/order"));
+      expect(JSON.parse(call![1]!.body as string)).toEqual({ ids: ["t-2", "t-1"] });
+    });
+  });
+
+  /** Die Liste soll sofort umspringen und nicht erst nach der Antwort. */
+  it("ordnet die Liste sofort um, ohne auf den Server zu warten", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Zuerst" },
+        { ...todo, id: "t-2", title: "Dann" },
+      ],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Zuerst")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: '"Dann" nach oben' }));
+
+    await waitFor(() => {
+      const zeilen = within(screen.getByRole("list", { name: "Offene Todos" })).getAllByRole("listitem");
+      expect(zeilen[0]!.textContent).toContain("Dann");
+    });
+  });
+
+  it("sperrt die Pfeile an den Enden der Liste", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [
+        { ...todo, id: "t-1", title: "Zuerst" },
+        { ...todo, id: "t-2", title: "Zuletzt" },
+      ],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Zuerst")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: '"Zuerst" nach oben' })).toBeDisabled();
+    expect(screen.getByRole("button", { name: '"Zuletzt" nach unten' })).toBeDisabled();
+  });
+
+  /** Wartendes ist geparkt — dort zu sortieren waere ohne Aussage. */
+  it("bietet im Warte-Abschnitt keine Sortierpfeile an", async () => {
+    ({ restore } = mockTodos({
+      "/todos": [{ ...todo, id: "t-1", title: "Wartet auf Acme", waiting: true }],
+    }));
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Wartet auf Acme")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /nach oben/ })).not.toBeInTheDocument();
+  });
+
   // ── Update-Semantik ─────────────────────────────────────────────
 
   /**
-   * Der Server ersetzt das Todo vollständig. Wird beim Ändern der Priorität nur
-   * dieses Feld gesendet, verliert das Todo Fälligkeit, Notizen und Kunde.
+   * Der Server ersetzt das Todo vollständig. Wird beim Umstellen des Zustands
+   * nur dieses Feld gesendet, verliert das Todo Fälligkeit, Notizen und Kunde.
    */
-  it("schickt beim Ändern der Priorität das vollständige Todo", async () => {
+  it("schickt beim Umstellen auf 'wartet' das vollständige Todo", async () => {
     const vollstaendig: TodoItem = {
       ...todo,
       dueDate: "2026-08-20",
@@ -408,14 +586,11 @@ describe("TodosPage", () => {
     renderWithRouter(<TodosPage user={testUser} />);
 
     await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
-    await userEvent.click(screen.getByText("Angebot rausschicken"));
-
-    await screen.findByDisplayValue("Angebot rausschicken");
-    await userEvent.selectOptions(screen.getByLabelText("Priorität"), "HIGH");
+    await userEvent.click(screen.getByRole("button", { name: /auf den Kunden warten lassen/ }));
 
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toMatchObject({
-      priority: "HIGH",
+      waiting: true,
       dueDate: "2026-08-20",
       notes: "Zahlen abwarten",
       customerId: testCustomer.id,

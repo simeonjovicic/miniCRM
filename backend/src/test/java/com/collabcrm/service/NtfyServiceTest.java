@@ -84,4 +84,64 @@ class NtfyServiceTest {
 
         assertThat(service.send("Titel", "Text")).isFalse();
     }
+
+    // ── Persoenliche Themen ───────────────────────────────────────────
+
+    /** Fuer die persoenlichen Uebersichten: jeder auf sein eigenes Thema. */
+    @Test
+    void anEinBestimmtesThemaGehtEsDorthinUndNichtAufsGemeinsame() {
+        NtfyService service = serviceWithTopic("gemeinsames-thema");
+        server.expect(requestTo("http://ntfy.test/simeon-privat"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string("1 Todo für dich"))
+                .andRespond(withSuccess());
+
+        assertThat(service.sendTo("simeon-privat", "Heute", "1 Todo für dich")).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void auchAnEinBestimmtesThemaGehtDerTextAlsUtf8Raus() {
+        NtfyService service = serviceWithTopic("gemeinsames-thema");
+        server.expect(requestTo("http://ntfy.test/simeon-privat"))
+                .andExpect(header("Content-Type", "text/plain;charset=UTF-8"))
+                .andExpect(content().string("Büro Wien — Angebot durchgehen"))
+                .andRespond(withSuccess());
+
+        service.sendTo("simeon-privat", "Heute", "Büro Wien — Angebot durchgehen");
+        server.verify();
+    }
+
+    /**
+     * Wer kein eigenes Thema hinterlegt hat, bekommt keine Uebersicht — es darf
+     * dafuer aber auch nichts an den ntfy-Server hinausgehen.
+     */
+    @Test
+    void ohneZielthemaWirdKeineAnfrageGestellt() {
+        NtfyService service = serviceWithTopic("gemeinsames-thema");
+
+        assertThat(service.sendTo(null, "Heute", "Text")).isFalse();
+        assertThat(service.sendTo("", "Heute", "Text")).isFalse();
+        assertThat(service.sendTo("   ", "Heute", "Text")).isFalse();
+        server.verify(); // keine Anfrage erwartet
+    }
+
+    /** Ein persoenliches Thema geht auch dann, wenn gar kein gemeinsames gesetzt ist. */
+    @Test
+    void einPersoenlichesThemaFunktioniertOhneGemeinsames() {
+        NtfyService service = serviceWithTopic("");
+        server.expect(requestTo("http://ntfy.test/simeon-privat")).andRespond(withSuccess());
+
+        assertThat(service.isEnabled()).isFalse();
+        assertThat(service.sendTo("simeon-privat", "Heute", "Text")).isTrue();
+        server.verify();
+    }
+
+    /** Ein Thema ist ein Passwort — es darf nicht im Klartext ins Log. */
+    @Test
+    void dasThemaWirdFuerDasLogGekuerzt() {
+        assertThat(NtfyService.mask("simeon-privat-4711")).isEqualTo("simeon-p***");
+        assertThat(NtfyService.mask("kurz")).isEqualTo("***");
+        assertThat(NtfyService.mask(null)).isEqualTo("***");
+    }
 }

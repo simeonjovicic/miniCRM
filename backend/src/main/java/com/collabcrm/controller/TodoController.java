@@ -61,6 +61,21 @@ public class TodoController {
                 Map.of("type", "TODO_CHANGED"));
     }
 
+    /**
+     * Neue Reihenfolge festlegen. Erwartet die vollständige Liste der IDs in
+     * der gewünschten Abfolge.
+     *
+     * Eigener Endpunkt und kein Feld am Todo: beim Ziehen ändern sich mehrere
+     * Todos auf einmal, und einzelne PUTs würden sich gegenseitig überholen.
+     */
+    @PutMapping("/order")
+    public Map<String, Object> reorder(@RequestBody Map<String, List<UUID>> body) {
+        int changed = todoService.reorder(body.get("ids"));
+        messagingTemplate.convertAndSend("/topic/todos",
+                Map.of("type", "TODO_CHANGED"));
+        return Map.of("reordered", changed);
+    }
+
     // ── Kommentare ────────────────────────────────────────────────────
 
     @GetMapping("/{id}/comments")

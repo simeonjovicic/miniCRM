@@ -67,6 +67,12 @@ export interface LoginCandidate {
   hasPassword: boolean;
 }
 
+/** Das eigene ntfy-Thema. Leer heisst: keine persönliche Übersicht. */
+export interface NtfyTopic {
+  topic: string;
+  configured: boolean;
+}
+
 export const authApi = {
   /** Auswahl für den Anmeldebildschirm. Ohne Anmeldung erreichbar. */
   candidates: () => request<LoginCandidate[]>("/auth/users"),
@@ -93,6 +99,20 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  /**
+   * Das eigene ntfy-Thema für die persönliche Morgen-Übersicht.
+   * Im Klartext, damit man es mit dem in der ntfy-App vergleichen kann — es
+   * kommt nur an den Besitzer selbst, nie an den anderen.
+   */
+  ntfyTopic: () => request<NtfyTopic>("/auth/ntfy-topic"),
+  /** Ein leerer Wert bestellt die persönliche Übersicht wieder ab. */
+  setNtfyTopic: (topic: string) =>
+    request<NtfyTopic>("/auth/ntfy-topic", {
+      method: "PUT",
+      body: JSON.stringify({ topic }),
+    }),
+  /** Probenachricht — ein vertipptes Thema fällt sonst nie auf. */
+  testNtfy: () => request<{ sent: boolean }>("/auth/ntfy-test", { method: "POST" }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   /**
    * Der angemeldete Benutzer, oder null wenn keine Sitzung besteht.
@@ -133,7 +153,8 @@ export interface UserPresence {
 export interface DashboardTodo {
   id: string;
   title: string;
-  priority: "LOW" | "MEDIUM" | "HIGH";
+  /** Liegt beim Kunden — steht deshalb am Ende der Liste. */
+  waiting: boolean;
   dueDate: string | null;
   customerId: string | null;
   customerName: string | null;
@@ -225,6 +246,16 @@ export const todosApi = {
     }),
   delete: (id: string) =>
     request<void>(`/todos/${id}`, { method: "DELETE" }),
+  /**
+   * Neue Reihenfolge festlegen — erwartet ALLE IDs in der gewünschten Abfolge.
+   * Ein eigener Aufruf und kein Feld am Todo: beim Ziehen ändern sich mehrere
+   * auf einmal, einzelne PUTs würden sich gegenseitig überholen.
+   */
+  reorder: (ids: string[]) =>
+    request<{ reordered: number }>("/todos/order", {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }),
 
   comments: (todoId: string) =>
     request<TodoComment[]>(`/todos/${todoId}/comments`),

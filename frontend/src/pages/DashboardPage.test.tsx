@@ -27,7 +27,7 @@ const stats: DashboardStats = {
     {
       id: "t-1",
       title: "Angebot rausschicken",
-      priority: "HIGH",
+      waiting: false,
       dueDate: isoDate(-2),
       customerId: "c-1",
       customerName: "Acme Corp",
@@ -36,7 +36,7 @@ const stats: DashboardStats = {
     {
       id: "t-2",
       title: "Rückruf Meier",
-      priority: "MEDIUM",
+      waiting: false,
       dueDate: isoDate(1),
       customerId: null,
       customerName: null,
@@ -130,6 +130,38 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("Angebot rausschicken")).toBeInTheDocument();
     expect(screen.getByText("@Acme Corp")).toBeInTheDocument();
     expect(screen.getByText("11 offen")).toBeInTheDocument();
+  });
+
+  /**
+   * Wartendes steht durch die Sortierung des Servers ohnehin am Ende — das
+   * Kennzeichen sagt, warum es nicht oben steht.
+   */
+  it("kennzeichnet Todos, die beim Kunden liegen", async () => {
+    ({ restore } = mockDashboard({
+      openTodos: [
+        {
+          id: "t-9",
+          title: "Wartet auf Acme",
+          waiting: true,
+          dueDate: null,
+          customerId: null,
+          customerName: null,
+          createdByUsername: testUser.username,
+        },
+      ],
+    }));
+    renderWithRouter(<DashboardPage user={testUser} />);
+
+    await screen.findByText("Wartet auf Acme");
+    expect(screen.getByText("wartet")).toBeInTheDocument();
+  });
+
+  it("kennzeichnet nur, was auch wirklich wartet", async () => {
+    ({ restore } = mockDashboard());
+    renderWithRouter(<DashboardPage user={testUser} />);
+
+    await screen.findByText("Angebot rausschicken");
+    expect(screen.queryByText("wartet")).not.toBeInTheDocument();
   });
 
   it("hebt überfällige und morgige Fristen hervor", async () => {

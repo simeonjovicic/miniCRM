@@ -63,7 +63,13 @@ public class NtfyService {
     }
 
     private String maskedTopic() {
-        return topic.length() <= 8 ? "***" : topic.substring(0, 8) + "***";
+        return mask(topic);
+    }
+
+    /** Für Protokollausgaben — ein Thema ist ein Passwort und gehört nicht ins Log. */
+    static String mask(String value) {
+        if (value == null) return "***";
+        return value.length() <= 8 ? "***" : value.substring(0, 8) + "***";
     }
 
     /**
@@ -81,10 +87,25 @@ public class NtfyService {
             }
             return false;
         }
+        return sendTo(topic, title, message);
+    }
+
+    /**
+     * Schickt an ein bestimmtes Thema — für die persönlichen Übersichten, bei
+     * denen jeder sein eigenes hinterlegt hat.
+     *
+     * Ein leeres Thema ist kein Fehler, sondern die Ansage "will ich nicht":
+     * es wird dann gar nicht erst versucht.
+     *
+     * @return true, wenn die Nachricht abgesetzt werden konnte
+     */
+    public boolean sendTo(String targetTopic, String title, String message) {
+        String target = targetTopic == null ? "" : targetTopic.trim();
+        if (target.isEmpty()) return false;
 
         try {
             client.post()
-                    .uri("/{topic}", topic)
+                    .uri("/{topic}", target)
                     .contentType(TEXT_UTF8)
                     // Umlaute im Header muessen RFC-2047-kodiert werden, sonst
                     // verstuemmelt ntfy den Titel.
@@ -95,7 +116,10 @@ public class NtfyService {
                     .toBodilessEntity();
             return true;
         } catch (Exception e) {
-            log.warn("ntfy-Nachricht konnte nicht zugestellt werden: {}", e.getMessage());
+            // Das Thema gehoert maskiert ins Log, sonst steht das Passwort des
+            // Kanals in der Datei — es hilft aber zu wissen, welches klemmt.
+            log.warn("ntfy-Nachricht an {} konnte nicht zugestellt werden: {}",
+                    mask(target), e.getMessage());
             return false;
         }
     }

@@ -43,7 +43,7 @@ class TodoServiceTest {
         Todo mitKommentaren = todo("Angebot schreiben");
         Todo ohne = todo("Rechnung prüfen");
 
-        when(repository.findAllByOrderByDoneAscCreatedAtDesc()).thenReturn(List.of(mitKommentaren, ohne));
+        when(repository.findAll()).thenReturn(List.of(mitKommentaren, ohne));
         // Expliziter Typ: List.of(Object[]) wuerde sonst als varargs gelesen
         when(commentRepository.countGroupedByTodoId())
                 .thenReturn(List.<Object[]>of(new Object[]{mitKommentaren.getId(), 3L}));
@@ -57,7 +57,7 @@ class TodoServiceTest {
     /** Ein Zähler pro Todo waere eine Abfrage pro Zeile — es muss eine bleiben. */
     @Test
     void dieZaehlerKostenNurEineAbfrage() {
-        when(repository.findAllByOrderByDoneAscCreatedAtDesc())
+        when(repository.findAll())
                 .thenReturn(List.of(todo("a"), todo("b"), todo("c")));
         when(commentRepository.countGroupedByTodoId()).thenReturn(List.of());
 
@@ -125,7 +125,6 @@ class TodoServiceTest {
         existing.setDone(false);
 
         Todo update = todo("Angebot");
-        update.setPriority("HIGH");
         update.setDueDate(existing.getDueDate());
         update.setNotes(existing.getNotes());
         update.setCustomerId(kunde);
@@ -137,7 +136,6 @@ class TodoServiceTest {
 
         Todo result = service.update(id, update);
 
-        assertThat(result.getPriority()).isEqualTo("HIGH");
         assertThat(result.isDone()).isTrue();
         assertThat(result.getDueDate()).isEqualTo(LocalDate.of(2026, 8, 20));
         assertThat(result.getNotes()).isEqualTo("Zahlen von bob abwarten");
@@ -253,6 +251,201 @@ class TodoServiceTest {
         assertThat(service.spawnNextOccurrence(ohneFrist)).isEmpty();
     }
 
+    // ── Reihenfolge ───────────────────────────────────────────────────
+
+    /** Die von Hand gelegte Reihenfolge schlaegt das Anlagedatum. */
+    @Test
+    void dieListeFolgtDerGelegtenReihenfolge() {
+        Todo erstes = platziert("Zuerst", 0, stunden(1));
+        Todo zweites = platziert("Dann", 1, stunden(3));
+        Todo drittes = platziert("Zuletzt", 2, stunden(2));
+        when(repository.findAll()).thenReturn(List.of(drittes, erstes, zweites));
+        when(commentRepository.countGroupedByTodoId()).thenReturn(List.of());
+
+        assertThat(service.findAll())
+                .extracting(Todo::getTitle)
+                .containsExactly("Zuerst", "Dann", "Zuletzt");
+    }
+
+    @Test
+    void erledigtesStehtImmerHinterOffenem() {
+        Todo offen = platziert("Offen", 5, stunden(1));
+        Todo erledigt = platziert("Erledigt", 0, stunden(1));
+        erledigt.setDone(true);
+        when(repository.findAll()).thenReturn(List.of(erledigt, offen));
+        when(commentRepository.countGroupedByTodoId()).thenReturn(List.of());
+
+        assertThat(service.findAll())
+                .extracting(Todo::getTitle)
+                .containsExactly("Offen", "Erledigt");
+    }
+
+    /**
+     * Solange niemand etwas verschoben hat, soll die Liste aussehen wie vorher:
+     * neueste zuerst.
+     */
+    @Test
+    void nochNieEinsortiertesBleibtBeiNeuesteZuerst() {
+        Todo alt = platziert("Alt", null, stunden(5));
+        Todo neu = platziert("Neu", null, stunden(1));
+        when(repository.findAll()).thenReturn(List.of(alt, neu));
+        when(commentRepository.countGroupedByTodoId()).thenReturn(List.of());
+
+        assertThat(service.findAll())
+                .extracting(Todo::getTitle)
+                .containsExactly("Neu", "Alt");
+    }
+
+    /** Gemischt: was einen Platz hat, steht vor dem, was nie einsortiert wurde. */
+    @Test
+    void einsortiertesStehtVorNichtEinsortiertem() {
+        Todo ohnePlatz = platziert("Ohne Platz", null, stunden(1));
+        Todo mitPlatz = platziert("Mit Platz", 9, stunden(9));
+        when(repository.findAll()).thenReturn(List.of(ohnePlatz, mitPlatz));
+        when(commentRepository.countGroupedByTodoId()).thenReturn(List.of());
+
+        assertThat(service.findAll())
+                .extracting(Todo::getTitle)
+                .containsExactly("Mit Platz", "Ohne Platz");
+    }
+
+    @Test
+    void neuAufgeschriebenesLandetGanzOben() {
+        Todo vorhanden = platziert("Vorhanden", 0, stunden(1));
+        when(repository.findAll()).thenReturn(List.of(vorhanden));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Todo neu = service.create(todo("Ganz neu"));
+
+        assertThat(neu.getPosition()).isLessThan(vorhanden.getPosition());
+    }
+
+    @Test
+    void aufLeererListeBekommtDasErsteEinenPlatz() {
+        when(repository.findAll()).thenReturn(List.of());
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.create(todo("Das erste")).getPosition()).isZero();
+    }
+
+    // ── Umsortieren ───────────────────────────────────────────────────
+
+    @Test
+    void umsortierenZaehltDiePlaetzeVonObenDurch() {
+        Todo a = platziert("A", 0, stunden(1));
+        Todo b = platziert("B", 1, stunden(1));
+        Todo c = platziert("C", 2, stunden(1));
+        when(repository.findAllById(any())).thenReturn(List.of(a, b, c));
+
+        service.reorder(List.of(c.getId(), a.getId(), b.getId()));
+
+        assertThat(c.getPosition()).isZero();
+        assertThat(a.getPosition()).isEqualTo(1);
+        assertThat(b.getPosition()).isEqualTo(2);
+    }
+
+    /** Nur was sich wirklich verschiebt, wird geschrieben. */
+    @Test
+    void unveraenderteBleibenUngespeichert() {
+        Todo a = platziert("A", 0, stunden(1));
+        Todo b = platziert("B", 1, stunden(1));
+        when(repository.findAllById(any())).thenReturn(List.of(a, b));
+
+        assertThat(service.reorder(List.of(a.getId(), b.getId()))).isZero();
+    }
+
+    /**
+     * Ein Client mit veraltetem Stand schickt womoeglich eine ID, die es nicht
+     * mehr gibt. Das darf die Anfrage nicht scheitern lassen — und es darf auch
+     * keine Luecke in der Nummerierung hinterlassen, sonst waechst der Abstand
+     * mit jedem geloeschten Todo weiter.
+     */
+    @Test
+    void unbekannteIdsWerdenUebergangenOhneLueckeZuHinterlassen() {
+        Todo a = platziert("A", 5, stunden(1));
+        Todo b = platziert("B", 6, stunden(2));
+        when(repository.findAllById(any())).thenReturn(List.of(a, b));
+
+        service.reorder(List.of(UUID.randomUUID(), a.getId(), UUID.randomUUID(), b.getId()));
+
+        assertThat(a.getPosition()).isZero();
+        assertThat(b.getPosition()).isEqualTo(1);
+    }
+
+    @Test
+    void eineLeereReihenfolgeAendertNichts() {
+        assertThat(service.reorder(List.of())).isZero();
+        assertThat(service.reorder(null)).isZero();
+        verify(repository, never()).saveAll(any());
+    }
+
+    /** Ein wiederkehrendes Todo soll nicht jedes Mal woanders auftauchen. */
+    @Test
+    void derNachfolgerUebernimmtDenPlatzDesVorgaengers() {
+        Todo monatlich = recurring("UVA einreichen", "MONTHLY", LocalDate.of(2026, 8, 15));
+        monatlich.setPosition(3);
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.spawnNextOccurrence(monatlich).orElseThrow().getPosition())
+                .isEqualTo(3);
+    }
+
+    // ── Wartet auf Kunden ─────────────────────────────────────────────
+
+    @Test
+    void derWartezustandLaesstSichSetzenUndWiederLoesen() {
+        UUID id = UUID.randomUUID();
+        Todo existing = todo("Angebot");
+        when(repository.findById(id)).thenReturn(Optional.of(existing));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Todo wartend = todo("Angebot");
+        wartend.setWaiting(true);
+        assertThat(service.update(id, wartend).waitsOnCustomer()).isTrue();
+
+        Todo wiederDran = todo("Angebot");
+        wiederDran.setWaiting(false);
+        assertThat(service.update(id, wiederDran).waitsOnCustomer()).isFalse();
+    }
+
+    /** Wer abhakt, wartet nicht mehr — sonst bliebe der Zustand als Leiche zurueck. */
+    @Test
+    void abhakenBeendetDasWarten() {
+        UUID id = UUID.randomUUID();
+        Todo existing = todo("Angebot");
+        existing.setWaiting(true);
+        when(repository.findById(id)).thenReturn(Optional.of(existing));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Todo update = todo("Angebot");
+        update.setWaiting(true);
+        update.setDone(true);
+
+        Todo result = service.update(id, update);
+
+        assertThat(result.isDone()).isTrue();
+        assertThat(result.waitsOnCustomer()).isFalse();
+        assertThat(result.getWaiting()).isNull();
+    }
+
+    @Test
+    void ohneAngabeWartetNichts() {
+        assertThat(todo("Angebot").waitsOnCustomer()).isFalse();
+    }
+
+    // ── Hilfsmittel ───────────────────────────────────────────────────
+
+    private static java.time.Instant stunden(int vor) {
+        return java.time.Instant.parse("2026-08-14T12:00:00Z").minusSeconds(vor * 3600L);
+    }
+
+    private static Todo platziert(String title, Integer position, java.time.Instant createdAt) {
+        Todo t = todo(title);
+        t.setPosition(position);
+        t.setCreatedAt(createdAt);
+        return t;
+    }
+
     private static Todo recurring(String title, String recurrence, LocalDate due) {
         Todo t = todo(title);
         t.setRecurrence(recurrence);
@@ -264,7 +457,6 @@ class TodoServiceTest {
     private static Todo abgehakt(Todo original) {
         Todo update = new Todo();
         update.setTitle(original.getTitle());
-        update.setPriority(original.getPriority());
         update.setDueDate(original.getDueDate());
         update.setRecurrence(original.getRecurrence());
         update.setDone(true);
@@ -285,7 +477,6 @@ class TodoServiceTest {
         Todo t = new Todo();
         ReflectionTestUtils.setField(t, "id", UUID.randomUUID());
         t.setTitle(title);
-        t.setPriority("MEDIUM");
         t.setCreatedBy(UUID.randomUUID());
         return t;
     }

@@ -25,9 +25,33 @@ public class Todo extends AbstractPersistable<UUID> {
     @Column(nullable = false)
     private boolean done;
 
-    /** Priorität: LOW, MEDIUM oder HIGH — bestimmt die Farbcodierung im Frontend */
-    @Column(length = 20)
-    private String priority;
+    /**
+     * Liegt beim Kunden und nicht bei uns.
+     *
+     * Ein eigener Zustand, weil "seit zwei Wochen keine Antwort" und "noch nicht
+     * angefangen" sonst gleich aussehen — obwohl man beim einen nichts tun kann.
+     * Gilt nur für offene Todos; beim Abhaken fällt er weg.
+     *
+     * Wrapper-Typ und nicht {@code boolean}: eine neue NOT-NULL-Spalte ohne
+     * Vorgabewert lässt sich in PostgreSQL nicht zu einer befüllten Tabelle
+     * hinzufügen, und {@code ddl-auto: update} liefert keinen mit. null zählt
+     * überall als "wartet nicht".
+     */
+    @Column
+    private Boolean waiting;
+
+    /**
+     * Platz in der von Hand gelegten Reihenfolge, kleiner heisst weiter oben.
+     *
+     * Ersetzt die früheren Prioritätsstufen: "wichtig/mittel/unwichtig"
+     * beantwortet nicht, womit man anfängt — eine Reihenfolge schon.
+     *
+     * null heisst "noch nie einsortiert" und sinkt hinter alles Sortierte,
+     * innerhalb davon bleibt es bei "neueste zuerst". Damit sieht die Liste
+     * unverändert aus, solange niemand etwas verschiebt.
+     */
+    @Column(name = "sort_position")
+    private Integer position;
 
     /** Optionales Fälligkeitsdatum */
     private LocalDate dueDate;
@@ -94,7 +118,6 @@ public class Todo extends AbstractPersistable<UUID> {
     @PrePersist
     void prePersist() {
         if (createdAt == null) createdAt = Instant.now();
-        if (priority == null) priority = "MEDIUM"; // Default-Priorität
     }
 
     public String getTitle() { return title; }
@@ -103,8 +126,21 @@ public class Todo extends AbstractPersistable<UUID> {
     public boolean isDone() { return done; }
     public void setDone(boolean done) { this.done = done; }
 
-    public String getPriority() { return priority; }
-    public void setPriority(String priority) { this.priority = priority; }
+    public Boolean getWaiting() { return waiting; }
+    public void setWaiting(Boolean waiting) { this.waiting = waiting; }
+
+    /**
+     * Wartet es gerade auf den Kunden? Erledigte warten nie.
+     *
+     * Bewusst ohne {@code get}/{@code is}-Vorsilbe: sonst hielte Jackson das
+     * hier und {@link #getWaiting()} für dieselbe Eigenschaft und bräche ab.
+     */
+    public boolean waitsOnCustomer() {
+        return Boolean.TRUE.equals(waiting) && !done;
+    }
+
+    public Integer getPosition() { return position; }
+    public void setPosition(Integer position) { this.position = position; }
 
     public LocalDate getDueDate() { return dueDate; }
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }

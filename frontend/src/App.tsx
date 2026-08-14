@@ -23,6 +23,7 @@ import TimerWidget from "./components/TimerWidget";
 import { ToastProvider, useToast } from "./components/Toast";
 import SearchModal from "./components/SearchModal";
 import ChangePasswordDialog from "./components/ChangePasswordDialog";
+import NotificationSettingsDialog from "./components/NotificationSettingsDialog";
 import { connect, subscribe } from "./services/websocket";
 import { authApi, SESSION_EXPIRED } from "./services/api";
 import { TimerProvider } from "./context/TimerContext";
@@ -254,6 +255,7 @@ function MobileMoreSheet({
   onLogout,
   onSearch,
   onChangePassword,
+  onNotifications,
 }: {
   open: boolean;
   onClose: () => void;
@@ -261,6 +263,7 @@ function MobileMoreSheet({
   onLogout: () => void;
   onSearch: () => void;
   onChangePassword: () => void;
+  onNotifications: () => void;
 }) {
   const location = useLocation();
 
@@ -307,6 +310,12 @@ function MobileMoreSheet({
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => { onClose(); onNotifications(); }}
+              className="rounded-xl px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
+            >
+              Push
+            </button>
             <button
               onClick={() => { onClose(); onChangePassword(); }}
               className="rounded-xl px-3 py-1.5 text-[13px] text-text-secondary hover:text-text-bright transition-all"
@@ -422,6 +431,7 @@ function AppShell({
   const [searchOpen, setSearchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { show } = useToast();
   const location = useLocation();
 
@@ -510,6 +520,17 @@ function AppShell({
             <SyncStatusBadge />
 
             <button
+              onClick={() => setNotificationsOpen(true)}
+              title="Benachrichtigungen"
+              aria-label="Benachrichtigungen"
+              className="glass-chip rounded-full p-2 text-text-secondary transition-all hover:text-text-bright"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+
+            <button
               onClick={() => setPasswordOpen(true)}
               title="Passwort ändern"
               aria-label={`${user.username} — Passwort ändern`}
@@ -584,11 +605,17 @@ function AppShell({
         onLogout={onLogout}
         onSearch={() => setSearchOpen(true)}
         onChangePassword={() => setPasswordOpen(true)}
+        onNotifications={() => setNotificationsOpen(true)}
       />
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />
+
+      <NotificationSettingsDialog
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+      />
     </div>
   );
 }

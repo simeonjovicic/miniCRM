@@ -2,6 +2,7 @@ package com.collabcrm.controller;
 
 import com.collabcrm.model.User;
 import com.collabcrm.repository.UserRepository;
+import com.collabcrm.service.NtfyService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -33,19 +34,32 @@ public class AuthController {
     /** Kurz genug zum Merken, lang genug um nicht geraten zu werden. */
     private static final int MIN_PASSWORD_LENGTH = 8;
 
+    /**
+     * Ein ntfy-Thema ist öffentlich erreichbar, wer es kennt liest mit. Zu kurz
+     * heisst durchprobierbar — deshalb dieselbe Untergrenze wie beim Passwort.
+     */
+    private static final int MIN_TOPIC_LENGTH = 8;
+
+    /** ntfy erlaubt nur diese Zeichen im Themennamen. */
+    private static final java.util.regex.Pattern TOPIC_PATTERN =
+            java.util.regex.Pattern.compile("[A-Za-z0-9_-]+");
+
     private final UserRepository users;
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
     private final SecurityContextRepository securityContextRepository;
+    private final NtfyService ntfy;
 
     public AuthController(UserRepository users,
                           AuthenticationManager authenticationManager,
                           PasswordEncoder passwordEncoder,
-                          SecurityContextRepository securityContextRepository) {
+                          SecurityContextRepository securityContextRepository,
+                          NtfyService ntfy) {
         this.users = users;
         this.authenticationManager = authenticationManager;
         this.passwordEncoder = passwordEncoder;
         this.securityContextRepository = securityContextRepository;
+        this.ntfy = ntfy;
     }
 
     /**
@@ -212,6 +226,76 @@ public class AuthController {
         return currentUser(authentication.getName());
     }
 
+    // ── Persönliches ntfy-Thema ─────────────────────────────────────────
+
+    /**
+     * Das eigene ntfy-Thema, im Klartext.
+     *
+     * Bewusst lesbar und nicht maskiert: man muss es mit dem vergleichen können,
+     * was in der ntfy-App eingetragen ist — genau da liegt der Fehler, wenn
+     * nichts ankommt. Es geht nur an den Besitzer selbst, nie an den anderen.
+     */
+    @GetMapping("/ntfy-topic")
+    public Map<String, Object> ntfyTopic(Authentication authentication) {
+        User user = requireUser(authentication);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("topic", user.getNtfyTopic() == null ? "" : user.getNtfyTopic());
+        out.put("configured", user.hasNtfyTopic());
+        return out;
+    }
+
+    /**
+     * Eigenes Thema setzen oder mit einem leeren Wert wieder abbestellen.
+     *
+     * Ohne Thema gibt es keine persönliche Übersicht — das ist kein Fehler,
+     * sondern die Art, sie abzuschalten.
+     */
+    @PutMapping("/ntfy-topic")
+    public Map<String, Object> setNtfyTopic(@RequestBody Map<String, String> body,
+                                            Authentication authentication) {
+        User user = requireUser(authentication);
+        String topic = body.getOrDefault("topic", "").trim();
+
+        if (!topic.isEmpty()) {
+            if (topic.length() < MIN_TOPIC_LENGTH) {
+                throw new IllegalArgumentException(
+                        "Das Thema braucht mindestens " + MIN_TOPIC_LENGTH
+                                + " Zeichen — es ist gleichzeitig das Passwort des Kanals.");
+            }
+            if (!TOPIC_PATTERN.matcher(topic).matches()) {
+                throw new IllegalArgumentException(
+                        "Erlaubt sind Buchstaben, Ziffern, Bindestrich und Unterstrich.");
+            }
+        }
+
+        user.setNtfyTopic(topic.isEmpty() ? null : topic);
+        users.save(user);
+        return ntfyTopic(authentication);
+    }
+
+    /**
+     * Schickt eine Probenachricht an das eigene Thema.
+     *
+     * Ein falsch abgetipptes Thema fällt sonst nicht auf: ntfy nimmt jeden
+     * Namen an, die Nachricht landet nur dort, wo niemand zuhört.
+     */
+    @PostMapping("/ntfy-test")
+    public Map<String, Object> testNtfy(Authentication authentication) {
+        User user = requireUser(authentication);
+        if (!user.hasNtfyTopic()) {
+            throw new IllegalArgumentException("Erst ein Thema hinterlegen.");
+        }
+
+        boolean ok = ntfy.sendTo(user.getNtfyTopic(), "miniCRM",
+                "Probenachricht — die tägliche Übersicht kommt hier an.");
+        return Map.of("sent", ok);
+    }
+
+    private User requireUser(Authentication authentication) {
+        return users.findByUsername(authentication.getName())
+                .orElseThrow(() -> new IllegalStateException("Angemeldeter Benutzer nicht gefunden."));
+    }
+
     private Map<String, Object> currentUser(String username) {
         User user = users.findByUsername(username)
                 .orElseThrow(() -> new IllegalStateException("Angemeldeter Benutzer nicht gefunden."));
@@ -222,6 +306,8 @@ public class AuthController {
         out.put("email", user.getEmail());
         out.put("role", user.getRole());
         out.put("createdAt", user.getCreatedAt().toString());
+        // Nur ob, nicht welches — das Thema selbst geht ueber /ntfy-topic.
+        out.put("hasNtfyTopic", user.hasNtfyTopic());
         return out;
     }
 

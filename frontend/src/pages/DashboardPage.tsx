@@ -12,12 +12,6 @@ import { subscribe } from "../services/websocket";
 import ErrorBanner from "../components/ErrorBanner";
 import type { User } from "../types";
 
-const PRIORITY_COLORS: Record<DashboardTodo["priority"], string> = {
-  HIGH: "bg-[#ff453a]",
-  MEDIUM: "bg-[#ff9f0a]",
-  LOW: "bg-[#30d158]",
-};
-
 /** Lesbare relative Zeit auf Deutsch, z.B. "vor 5 Min" */
 function formatRelative(iso: string | null): string {
   if (!iso) return "noch nie online";
@@ -164,7 +158,15 @@ function OpenTodos({ stats }: { stats: DashboardStats }) {
               onClick={() => navigate("/todos")}
               className="flex cursor-pointer items-center gap-3 rounded-xl bg-white/40 px-4 py-2.5 transition-all hover:bg-white/65"
             >
-              <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLORS[todo.priority]}`} />
+                {/* Wartendes steht ohnehin am Ende — hier nur noch der Grund dafür */}
+                {todo.waiting && (
+                  <span
+                    title="Wartet auf den Kunden"
+                    className="shrink-0 rounded-full bg-[#ff9f0a]/15 px-2 py-0.5 text-[10px] font-medium text-[#b06f00]"
+                  >
+                    wartet
+                  </span>
+                )}
               <span className="min-w-0 flex-1 truncate text-sm text-text-bright">{todo.title}</span>
 
               {todo.customerName && (

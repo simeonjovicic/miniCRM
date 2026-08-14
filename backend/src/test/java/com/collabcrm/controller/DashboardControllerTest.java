@@ -49,8 +49,8 @@ class DashboardControllerTest {
     @Test
     void nurOffeneTodosLandenAufDemDashboard() throws Exception {
         when(todoService.findAll()).thenReturn(List.of(
-                todo("Angebot schreiben", "HIGH", false),
-                todo("Schon erledigt", "HIGH", true)));
+                todo("Angebot schreiben", false),
+                todo("Schon erledigt", true)));
         givenFinance(List.of(), List.of());
 
         mockMvc.perform(get("/api/dashboard/stats"))
@@ -60,42 +60,58 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.openTodoCount").value(1));
     }
 
+    /**
+     * Die auf der Todo-Seite gelegte Reihenfolge ist die Antwort auf "womit
+     * fange ich an" — das Dashboard darf sie nicht umsortieren.
+     */
     @Test
-    void dringendeTodosStehenOben() throws Exception {
+    void dieGelegteReihenfolgeBleibtErhalten() throws Exception {
         when(todoService.findAll()).thenReturn(List.of(
-                todo("Irgendwann", "LOW", false),
-                todo("Dringend", "HIGH", false),
-                todo("Mittelmässig", "MEDIUM", false)));
+                todo("Zuerst", false),
+                todo("Dann", false),
+                todo("Zuletzt", false)));
         givenFinance(List.of(), List.of());
 
         mockMvc.perform(get("/api/dashboard/stats"))
-                .andExpect(jsonPath("$.openTodos[0].title").value("Dringend"))
-                .andExpect(jsonPath("$.openTodos[1].title").value("Mittelmässig"))
-                .andExpect(jsonPath("$.openTodos[2].title").value("Irgendwann"));
+                .andExpect(jsonPath("$.openTodos[0].title").value("Zuerst"))
+                .andExpect(jsonPath("$.openTodos[1].title").value("Dann"))
+                .andExpect(jsonPath("$.openTodos[2].title").value("Zuletzt"));
+    }
+
+    /** Wartendes ist offen, aber nicht dran — es darf die ersten Plaetze nicht belegen. */
+    @Test
+    void wartendesRutschtAnsEnde() throws Exception {
+        Todo wartend = todo("Wartet auf Acme", false);
+        wartend.setWaiting(true);
+
+        when(todoService.findAll()).thenReturn(List.of(wartend, todo("Kann ich machen", false)));
+        givenFinance(List.of(), List.of());
+
+        mockMvc.perform(get("/api/dashboard/stats"))
+                .andExpect(jsonPath("$.openTodos[0].title").value("Kann ich machen"))
+                .andExpect(jsonPath("$.openTodos[1].title").value("Wartet auf Acme"))
+                .andExpect(jsonPath("$.openTodos[1].waiting").value(true))
+                .andExpect(jsonPath("$.waitingTodoCount").value(1));
     }
 
     @Test
-    void beiGleicherDringlichkeitZaehltDieNaechsteFrist() throws Exception {
-        Todo spaeter = todo("Spaeter faellig", "HIGH", false);
-        spaeter.setDueDate(LocalDate.of(2026, 12, 1));
-        Todo bald = todo("Bald faellig", "HIGH", false);
-        bald.setDueDate(LocalDate.of(2026, 8, 15));
-        Todo ohneFrist = todo("Ohne Frist", "HIGH", false);
+    void abgehakteWartenNichtMehr() throws Exception {
+        Todo erledigtUndWartend = todo("Erledigt", true);
+        erledigtUndWartend.setWaiting(true);
 
-        when(todoService.findAll()).thenReturn(List.of(spaeter, ohneFrist, bald));
+        when(todoService.findAll()).thenReturn(List.of(erledigtUndWartend, todo("Offen", false)));
         givenFinance(List.of(), List.of());
 
         mockMvc.perform(get("/api/dashboard/stats"))
-                .andExpect(jsonPath("$.openTodos[0].title").value("Bald faellig"))
-                .andExpect(jsonPath("$.openTodos[1].title").value("Spaeter faellig"))
-                .andExpect(jsonPath("$.openTodos[2].title").value("Ohne Frist"));
+                .andExpect(jsonPath("$.openTodoCount").value(1))
+                .andExpect(jsonPath("$.waitingTodoCount").value(0));
     }
 
     /** Die Liste wird gekürzt, die Gesamtzahl muss trotzdem stimmen. */
     @Test
     void dieGesamtzahlZaehltAuchDieNichtGezeigten() throws Exception {
         List<Todo> viele = java.util.stream.IntStream.range(0, 20)
-                .mapToObj(i -> todo("Todo " + i, "MEDIUM", false))
+                .mapToObj(i -> todo("Todo " + i, false))
                 .toList();
         when(todoService.findAll()).thenReturn(viele);
         givenFinance(List.of(), List.of());
@@ -157,11 +173,10 @@ class DashboardControllerTest {
 
     // ── Hilfsmittel ───────────────────────────────────────────────────
 
-    private static Todo todo(String title, String priority, boolean done) {
+    private static Todo todo(String title, boolean done) {
         Todo t = new Todo();
         ReflectionTestUtils.setField(t, "id", UUID.randomUUID());
         t.setTitle(title);
-        t.setPriority(priority);
         t.setDone(done);
         t.setCreatedBy(UUID.randomUUID());
         t.setCreatedAt(Instant.now());

@@ -39,7 +39,18 @@ export interface TodoItem {
   id: string;
   title: string;
   done: boolean;
-  priority: "LOW" | "MEDIUM" | "HIGH";
+  /**
+   * Liegt beim Kunden und nicht bei uns — ein eigener Zustand neben offen und
+   * erledigt. "Seit zwei Wochen keine Antwort" und "noch nicht angefangen"
+   * sähen sonst gleich aus, obwohl man beim einen nichts tun kann.
+   */
+  waiting?: boolean;
+  /**
+   * Platz in der von Hand gelegten Reihenfolge, kleiner heisst weiter oben.
+   * Ersetzt die früheren Prioritätsstufen. Nicht gesetzt heisst "noch nie
+   * einsortiert" und sinkt hinter alles Sortierte.
+   */
+  position?: number | null;
   dueDate: string | null;
   notes: string | null;
   /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel */

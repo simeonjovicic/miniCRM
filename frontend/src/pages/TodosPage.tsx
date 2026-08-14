@@ -5,16 +5,14 @@ import { subscribe } from "../services/websocket";
 import CustomerMentionInput from "../components/CustomerMentionInput";
 import AppointmentsPanel from "../components/AppointmentsPanel";
 import ErrorBanner from "../components/ErrorBanner";
+import { useToast } from "../components/Toast";
 import { RECURRENCE_LABELS } from "../types";
+import { moveAfter, moveBefore, moveDown, moveUp } from "../utils/reorder";
 import type { User, TodoItem, TodoComment, TodoRecurrence, Customer } from "../types";
 
-const PRIORITY_COLORS = {
-  HIGH: "bg-[#ff453a]",
-  MEDIUM: "bg-[#ff9f0a]",
-  LOW: "bg-[#30d158]",
-};
 
 export default function TodosPage({ user }: { user: User }) {
+  const { show } = useToast();
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [members, setMembers] = useState<User[]>([]);
@@ -22,7 +20,8 @@ export default function TodosPage({ user }: { user: User }) {
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [filterUser, setFilterUser] = useState<string>("ALL");
-  const [filterPriority, setFilterPriority] = useState<string>("ALL");
+  /** Was gerade gezogen wird — null, solange niemand zieht. */
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   /** Kunde, der für das neue Todo per @ ausgewählt wurde */
@@ -83,7 +82,6 @@ export default function TodosPage({ user }: { user: User }) {
     const created = await todosApi.create({
       title: input.trim(),
       done: false,
-      priority: "MEDIUM",
       customerId: newCustomer?.id,
       customerName: newCustomer?.name,
       createdBy: user.id,
@@ -111,6 +109,23 @@ export default function TodosPage({ user }: { user: User }) {
     setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
   }
 
+  /**
+   * Warten an- und abschalten, mit Ansage.
+   *
+   * Die Zeile springt dabei in einen anderen Abschnitt — ohne Hinweis sieht das
+   * aus, als wäre sie verschwunden.
+   */
+  async function handleToggleWaiting(todo: TodoItem) {
+    const nowWaiting = !todo.waiting;
+    await handleUpdate(todo.id, { waiting: nowWaiting });
+    show(
+      nowWaiting
+        ? `„${todo.title}" wartet jetzt auf den Kunden — steht unten im eigenen Abschnitt`
+        : `„${todo.title}" ist wieder dran`,
+      "info",
+    );
+  }
+
   async function handleDelete(id: string) {
     await todosApi.delete(id);
     setTodos((prev) => prev.filter((t) => t.id !== id));
@@ -129,12 +144,56 @@ export default function TodosPage({ user }: { user: User }) {
         ? todos.filter((t) => !t.assigneeId)
         : todos.filter((t) => t.assigneeId === filterUser);
 
-  const byPriority =
-    filterPriority === "ALL" ? byUser : byUser.filter((t) => t.priority === filterPriority);
-
-  const openTodos = byPriority.filter((t) => !t.done);
-  const completedTodos = byPriority.filter((t) => t.done);
+  /**
+   * Drei Listen statt zwei: Wartendes ist offen, aber nicht dran. Es zwischen
+   * die anderen zu mischen, macht die obere Liste unbrauchbar für die Frage
+   * "womit fange ich an".
+   */
+  const openTodos = byUser.filter((t) => !t.done && !t.waiting);
+  const waitingTodos = byUser.filter((t) => !t.done && t.waiting);
+  const completedTodos = byUser.filter((t) => t.done);
   const totalOpen = todos.filter((t) => !t.done).length;
+
+  /** Alle offenen in der Gesamtreihenfolge — die Grundlage jedes Verschiebens. */
+  const allOpenIds = todos.filter((t) => !t.done).map((t) => t.id);
+
+  /**
+   * Übernimmt eine neue Reihenfolge: erst sichtbar machen, dann speichern.
+   *
+   * Ohne das sofortige Umsortieren würde die Zeile beim Loslassen zurück-
+   * springen und erst nach der Antwort an den neuen Platz hüpfen.
+   */
+  async function applyOrder(nextIds: string[]) {
+    const byId = new Map(todos.map((t) => [t.id, t]));
+    const moved = nextIds.map((id) => byId.get(id)).filter((t): t is TodoItem => !!t);
+    const untouched = todos.filter((t) => !nextIds.includes(t.id));
+    setTodos([...moved, ...untouched]);
+
+    try {
+      await todosApi.reorder(nextIds);
+      setError(null);
+    } catch (err) {
+      // Serverstand holen, sonst zeigt die Liste eine Reihenfolge, die es nicht gibt
+      setError((err as Error).message);
+      reload();
+    }
+  }
+
+  function handleDropOn(targetId: string) {
+    const dragged = draggingId;
+    setDraggingId(null);
+    if (!dragged || dragged === targetId) return;
+
+    // Nach unten ziehen heisst "dahinter", nach oben "davor" — sonst landet die
+    // Zeile beim Ziehen nach unten eine Position zu weit oben.
+    const from = allOpenIds.indexOf(dragged);
+    const to = allOpenIds.indexOf(targetId);
+    void applyOrder(
+      from < to
+        ? moveAfter(allOpenIds, dragged, targetId)
+        : moveBefore(allOpenIds, dragged, targetId),
+    );
+  }
 
   if (loading) {
     return <p className="text-sm text-text-secondary">Lade Todos...</p>;
@@ -196,26 +255,6 @@ export default function TodosPage({ user }: { user: User }) {
 
         {/* Filters */}
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          {/* Priority filter */}
-          <div className="flex items-center gap-1.5">
-            {(["ALL", "HIGH", "MEDIUM", "LOW"] as const).map((p) => (
-              <button
-                key={p}
-                onClick={() => setFilterPriority(p)}
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                  filterPriority === p
-                    ? "bg-accent text-white"
-                    : "glass-chip text-text-secondary hover:text-text-bright"
-                }`}
-              >
-                {p !== "ALL" && (
-                  <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_COLORS[p]}`} />
-                )}
-                {p === "ALL" ? "Alle" : p === "HIGH" ? "Hoch" : p === "MEDIUM" ? "Mittel" : "Niedrig"}
-              </button>
-            ))}
-          </div>
-
           {/* Zustaendigkeit — wessen Ball ist es */}
           {members.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Nach Zuständigkeit filtern">
@@ -245,12 +284,12 @@ export default function TodosPage({ user }: { user: User }) {
           )}
         </div>
 
-        {/* Open todos */}
+        {/* Was dran ist — hier wird sortiert */}
         {openTodos.length === 0 ? (
           <p className="text-sm text-text-secondary">Keine offenen Todos.</p>
         ) : (
-          <ul className="space-y-1">
-            {openTodos.map((todo) => (
+          <ul className="space-y-1" aria-label="Offene Todos">
+            {openTodos.map((todo, index) => (
               <TodoRow
                 key={todo.id}
                 todo={todo}
@@ -262,9 +301,55 @@ export default function TodosPage({ user }: { user: User }) {
                 customers={customers}
                 members={members}
                 user={user}
+                onToggleWaiting={() => handleToggleWaiting(todo)}
+                sortable
+                isFirst={index === 0}
+                isLast={index === openTodos.length - 1}
+                dragging={draggingId === todo.id}
+                onDragStart={() => setDraggingId(todo.id)}
+                onDragEnd={() => setDraggingId(null)}
+                onDropOn={() => handleDropOn(todo.id)}
+                onMoveUp={() =>
+                  applyOrder(moveUp(allOpenIds, openTodos.map((t) => t.id), todo.id))
+                }
+                onMoveDown={() =>
+                  applyOrder(moveDown(allOpenIds, openTodos.map((t) => t.id), todo.id))
+                }
               />
             ))}
           </ul>
+        )}
+
+        {/*
+          Wartendes steht abgesetzt darunter: es ist offen, aber man kann nichts
+          tun — zwischen den anderen würde es die Liste nur verstopfen.
+        */}
+        {waitingTodos.length > 0 && (
+          <div className="mt-6">
+            <h2 className="mb-2 flex items-center gap-2 text-sm font-medium text-text-secondary">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Wartet auf Kunden ({waitingTodos.length})
+            </h2>
+            <ul className="space-y-1 opacity-75" aria-label="Wartet auf Kunden">
+              {waitingTodos.map((todo) => (
+                <TodoRow
+                  key={todo.id}
+                  todo={todo}
+                  expandedId={expandedId}
+                  setExpandedId={setExpandedId}
+                  onToggle={handleToggleDone}
+                  onUpdate={handleUpdate}
+                  onDelete={handleDelete}
+                  customers={customers}
+                  members={members}
+                  user={user}
+                  onToggleWaiting={() => handleToggleWaiting(todo)}
+                />
+              ))}
+            </ul>
+          </div>
         )}
 
         {/* Completed section */}
@@ -323,6 +408,16 @@ function TodoRow({
   customers,
   members,
   user,
+  sortable = false,
+  isFirst = false,
+  isLast = false,
+  dragging = false,
+  onDragStart,
+  onDragEnd,
+  onDropOn,
+  onMoveUp,
+  onMoveDown,
+  onToggleWaiting,
 }: {
   todo: TodoItem;
   expandedId: string | null;
@@ -333,14 +428,68 @@ function TodoRow({
   customers: Customer[];
   members: User[];
   user: User;
+  /** Nur in der Liste der offenen Todos — Wartendes und Erledigtes wird nicht sortiert. */
+  sortable?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
+  dragging?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  onDropOn?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onToggleWaiting?: () => void;
 }) {
   return (
-    <li>
+    <li
+      draggable={sortable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={sortable ? (e) => e.preventDefault() : undefined}
+      onDrop={
+        sortable
+          ? (e) => {
+              e.preventDefault();
+              onDropOn?.();
+            }
+          : undefined
+      }
+      className={dragging ? "opacity-40" : undefined}
+    >
       <div
-        className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
+        className={`group flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
           expandedId === todo.id ? "glass" : "hover:bg-white/40"
         }`}
       >
+        {sortable && (
+          /*
+            Ziehen geht nur mit der Maus. Die beiden Pfeile sind der Weg per
+            Tastatur und auf dem Handy — ohne sie waere die Reihenfolge dort
+            gar nicht zu aendern.
+          */
+          <div className="flex shrink-0 flex-col opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <button
+              onClick={onMoveUp}
+              disabled={isFirst}
+              aria-label={`"${todo.title}" nach oben`}
+              className="text-text-secondary transition-colors hover:text-text-bright disabled:opacity-25"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={onMoveDown}
+              disabled={isLast}
+              aria-label={`"${todo.title}" nach unten`}
+              className="text-text-secondary transition-colors hover:text-text-bright disabled:opacity-25"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+        )}
         <button
           onClick={() => onToggle(todo)}
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
@@ -355,8 +504,6 @@ function TodoRow({
             </svg>
           )}
         </button>
-
-        <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_COLORS[todo.priority]}`} />
 
         <button
           onClick={() => setExpandedId(expandedId === todo.id ? null : todo.id)}
@@ -375,6 +522,41 @@ function TodoRow({
             </span>
           )}
         </button>
+
+        {/*
+          Direkt anklickbar statt über den Detailbereich: den Zustand umzustellen
+          ist der häufigste Handgriff daran.
+
+          Immer sichtbar, nicht erst beim Überfahren: sonst findet man den Knopf
+          nie, und am Handy gäbe es ihn faktisch gar nicht — dort gibt es kein
+          Überfahren. Aus heisst blasse Uhr, an heisst gefülltes "wartet".
+        */}
+        {!todo.done && (
+          <button
+            onClick={() => onToggleWaiting?.()}
+            aria-pressed={!!todo.waiting}
+            aria-label={
+              todo.waiting
+                ? `"${todo.title}" wartet auf den Kunden — wieder aufnehmen`
+                : `"${todo.title}" auf den Kunden warten lassen`
+            }
+            title={
+              todo.waiting
+                ? "Wartet auf den Kunden — klicken, um es wieder aufzunehmen"
+                : "Auf den Kunden warten lassen — rutscht nach unten in den eigenen Abschnitt"
+            }
+            className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${
+              todo.waiting
+                ? "bg-[#ff9f0a]/20 text-[#8a5600]"
+                : "text-text-secondary/50 hover:bg-white/70 hover:text-text-bright"
+            }`}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {todo.waiting && "wartet"}
+          </button>
+        )}
 
         {todo.assigneeUsername && (
           <span
@@ -488,7 +670,6 @@ function TodoDetail({
 }) {
   const isOwner = todo.createdBy === user.id;
   const [title, setTitle] = useState(todo.title);
-  const [priority, setPriority] = useState(todo.priority);
   const [dueDate, setDueDate] = useState(todo.dueDate ?? "");
   const [notes, setNotes] = useState(todo.notes ?? "");
   const [recurrence, setRecurrence] = useState<TodoRecurrence>(todo.recurrence ?? "NONE");
@@ -542,24 +723,7 @@ function TodoDetail({
             ))}
           </select>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">Priorität</label>
-          <select
-            value={priority}
-            onChange={(e) => {
-              const v = e.target.value as TodoItem["priority"];
-              setPriority(v);
-              onUpdate({ priority: v });
-            }}
-            aria-label="Priorität"
-            className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-          >
-            <option value="LOW">Niedrig</option>
-            <option value="MEDIUM">Mittel</option>
-            <option value="HIGH">Hoch</option>
-          </select>
-        </div>
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <label className="mb-1 block text-xs font-medium text-text-secondary">Fällig am</label>
           <input
             type="date"

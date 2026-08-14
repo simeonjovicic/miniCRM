@@ -42,6 +42,20 @@ public class User extends AbstractPersistable<UUID> {
     @Column
     private String passwordHash;
 
+    /**
+     * Eigenes ntfy-Thema für die persönliche Morgen-Übersicht.
+     *
+     * Wie beim Passwort-Hash gilt: der Themenname ist gleichzeitig das Passwort
+     * des Push-Kanals, deshalb {@code @JsonIgnore}. Wer sein eigenes Thema sehen
+     * oder ändern will, geht über {@code /api/auth/ntfy-topic} — dort ist geprüft,
+     * dass man nur an das eigene kommt.
+     *
+     * Leer heisst: keine persönliche Übersicht. Es wird dann auch nicht versucht.
+     */
+    @JsonIgnore
+    @Column
+    private String ntfyTopic;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -66,6 +80,20 @@ public class User extends AbstractPersistable<UUID> {
     @JsonIgnore
     public boolean hasPassword() {
         return passwordHash != null && !passwordHash.isBlank();
+    }
+
+    public String getNtfyTopic() { return ntfyTopic; }
+    public void setNtfyTopic(String ntfyTopic) { this.ntfyTopic = ntfyTopic; }
+
+    /**
+     * true, wenn eine persönliche Übersicht zugestellt werden kann.
+     * Anders als das Thema selbst darf das nach aussen — es sagt nur, ob etwas
+     * eingerichtet ist, nicht was.
+     */
+    @Transient
+    @JsonIgnore
+    public boolean hasNtfyTopic() {
+        return ntfyTopic != null && !ntfyTopic.isBlank();
     }
 
     public String getRole() { return role; }

@@ -18,7 +18,9 @@ import java.util.UUID;
 
 /**
  * Service für Todo-CRUD-Operationen.
- * Todos werden sortiert: offene zuerst (done=false), dann nach Erstellungsdatum absteigend.
+ *
+ * Sortiert wird: offene zuerst, darin nach der von Hand gelegten Reihenfolge,
+ * alles noch nie Einsortierte dahinter nach Alter absteigend.
  */
 @Service
 @Transactional
@@ -35,7 +37,8 @@ public class TodoService {
     }
 
     public List<Todo> findAll() {
-        List<Todo> todos = repository.findAllByOrderByDoneAscCreatedAtDesc();
+        List<Todo> todos = new java.util.ArrayList<>(repository.findAll());
+        todos.sort(ORDER);
 
         // Kommentarzähler in einer Abfrage nachziehen statt einer pro Todo
         Map<UUID, Integer> counts = new HashMap<>();
@@ -45,6 +48,58 @@ public class TodoService {
         todos.forEach(t -> t.setCommentCount(counts.getOrDefault(t.getId(), 0)));
 
         return todos;
+    }
+
+    /**
+     * Offene zuerst, darin die von Hand gelegte Reihenfolge, der Rest nach
+     * Alter absteigend.
+     *
+     * Sortiert wird in Java und nicht in der Abfrage: wo NULL-Werte landen,
+     * handhaben die Datenbanken unterschiedlich — H2 und PostgreSQL kämen bei
+     * noch nie einsortierten Todos zu verschiedenen Listen. Bei zwei Personen
+     * ist die Datenmenge dafür ohnehin belanglos.
+     */
+    static final java.util.Comparator<Todo> ORDER =
+            java.util.Comparator.comparing(Todo::isDone)
+                    // Einsortiertes vor noch nie Einsortiertem
+                    .thenComparing(t -> t.getPosition() == null)
+                    .thenComparing(Todo::getPosition,
+                            java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                    // nullsLast, weil ein noch nicht gespeichertes Todo kein
+                    // Anlagedatum hat — sonst faellt die Sortierung darueber.
+                    .thenComparing(Todo::getCreatedAt,
+                            java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()));
+
+    /**
+     * Legt die Reihenfolge neu fest. Erwartet die vollständige Liste in der
+     * gewünschten Abfolge; alles darin bekommt seinen Platz von oben durchgezählt.
+     *
+     * Die Vollständigkeit ist Absicht: einzelne Plätze zu verschieben führt
+     * schnell zu Lücken und Doppelbelegungen, sobald zwei Leute gleichzeitig
+     * ziehen. Unbekannte IDs werden übergangen, damit ein veralteter Client
+     * nicht die ganze Anfrage scheitern lässt.
+     *
+     * @return wie viele Todos einen neuen Platz bekommen haben
+     */
+    public int reorder(List<UUID> idsInOrder) {
+        if (idsInOrder == null || idsInOrder.isEmpty()) return 0;
+
+        Map<UUID, Todo> byId = new HashMap<>();
+        repository.findAllById(idsInOrder).forEach(t -> byId.put(t.getId(), t));
+
+        List<Todo> changed = new java.util.ArrayList<>();
+        int next = 0;
+        for (UUID id : idsInOrder) {
+            Todo todo = byId.get(id);
+            if (todo == null) continue;
+            int place = next++;
+            if (!Integer.valueOf(place).equals(todo.getPosition())) {
+                todo.setPosition(place);
+                changed.add(todo);
+            }
+        }
+        repository.saveAll(changed);
+        return changed.size();
     }
 
     // ── Kommentare ────────────────────────────────────────────────────
@@ -70,7 +125,25 @@ public class TodoService {
     }
 
     public Todo create(Todo todo) {
+        if (todo.getPosition() == null) {
+            todo.setPosition(topPosition());
+        }
         return repository.save(todo);
+    }
+
+    /**
+     * Ein Platz oberhalb von allem bisher Einsortierten.
+     *
+     * Neu Aufgeschriebenes gehört nach oben — ohne das fiele es unter alles
+     * Sortierte und man müsste es erst hochziehen, um es überhaupt zu sehen.
+     */
+    private int topPosition() {
+        return repository.findAll().stream()
+                .map(Todo::getPosition)
+                .filter(java.util.Objects::nonNull)
+                .min(Integer::compareTo)
+                .map(min -> min - 1)
+                .orElse(0);
     }
 
     // ── Wiederkehrende Todos ──────────────────────────────────────────
@@ -93,8 +166,10 @@ public class TodoService {
 
         Todo successor = new Todo();
         successor.setTitle(todo.getTitle());
-        successor.setPriority(todo.getPriority());
         successor.setNotes(todo.getNotes());
+        // Am selben Platz wie der Vorgänger — ein wiederkehrendes Todo soll
+        // nicht jedes Mal woanders in der Liste auftauchen.
+        successor.setPosition(todo.getPosition());
         successor.setCustomerId(todo.getCustomerId());
         successor.setCustomerName(todo.getCustomerName());
         successor.setRecurrence(todo.getRecurrence());
@@ -163,8 +238,9 @@ public class TodoService {
         boolean wasOpen = !existing.isDone();
 
         if (updates.getTitle() != null) existing.setTitle(updates.getTitle());
-        if (updates.getPriority() != null) existing.setPriority(updates.getPriority());
         existing.setDone(updates.isDone());
+        // Erledigtes wartet nicht mehr auf den Kunden.
+        existing.setWaiting(updates.isDone() ? null : updates.getWaiting());
         existing.setDueDate(updates.getDueDate());
         existing.setNotes(updates.getNotes());
         existing.setCustomerId(updates.getCustomerId());

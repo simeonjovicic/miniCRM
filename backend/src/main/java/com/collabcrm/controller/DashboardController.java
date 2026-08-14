@@ -27,9 +27,6 @@ public class DashboardController {
     private static final int MAX_TODOS = 8;
     private static final int MAX_INVOICES = 6;
 
-    /** Reihenfolge der Dringlichkeit für die Sortierung */
-    private static final List<String> PRIORITY_ORDER = List.of("HIGH", "MEDIUM", "LOW");
-
     private final TodoService todoService;
     private final FinanceStatsService financeStatsService;
     private final PresenceService presenceService;
@@ -58,14 +55,16 @@ public class DashboardController {
         return out;
     }
 
-    /** Offene Todos, die dringendsten zuerst, danach die mit der nächsten Frist. */
+    /**
+     * Offene Todos in der von Hand gelegten Reihenfolge — das ist ja die Antwort
+     * auf "womit fange ich an". Wartendes rutscht ans Ende: es ist offen, aber
+     * gerade nicht dran, und würde die ersten Plätze sonst blockieren.
+     */
     private Map<String, Object> todoSection() {
+        // findAll() liefert bereits sortiert; hier nur noch das Wartende absetzen
         List<Todo> open = todoService.findAll().stream()
                 .filter(t -> !t.isDone())
-                .sorted(Comparator
-                        .comparingInt((Todo t) -> priorityRank(t.getPriority()))
-                        .thenComparing(Todo::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(Todo::getCreatedAt, Comparator.reverseOrder()))
+                .sorted(Comparator.comparing(Todo::waitsOnCustomer))
                 .toList();
 
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -73,7 +72,7 @@ public class DashboardController {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", todo.getId().toString());
             row.put("title", todo.getTitle());
-            row.put("priority", todo.getPriority());
+            row.put("waiting", todo.waitsOnCustomer());
             row.put("dueDate", todo.getDueDate() != null ? todo.getDueDate().toString() : null);
             row.put("customerId", todo.getCustomerId() != null ? todo.getCustomerId().toString() : null);
             row.put("customerName", todo.getCustomerName());
@@ -85,12 +84,8 @@ public class DashboardController {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("openTodos", rows);
         section.put("openTodoCount", open.size());
+        section.put("waitingTodoCount", open.stream().filter(Todo::waitsOnCustomer).count());
         return section;
-    }
-
-    private static int priorityRank(String priority) {
-        int index = PRIORITY_ORDER.indexOf(priority);
-        return index < 0 ? PRIORITY_ORDER.size() : index;
     }
 
     /** Verschickte, aber noch nicht bezahlte Rechnungen — jahresübergreifend. */
