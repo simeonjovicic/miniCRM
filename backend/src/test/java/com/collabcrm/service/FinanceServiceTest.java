@@ -88,17 +88,49 @@ class FinanceServiceTest {
         assertThat(create(entry).getVatDeductible()).isNull();
     }
 
-    /** Geteilt werden nur Gewinne — eine als geteilt markierte Ausgabe wird entschärft. */
+    /**
+     * Geteilte Ausgabe: zwei Buchungen ueber je die Haelfte, keine interne
+     * Verrechnung. Beide tragen dadurch denselben Aufwand.
+     */
     @Test
-    void ausgabenKoennenNichtGeteiltWerden() {
-        FinanceEntry entry = expense("120.00", "20");
-        entry.setSharedWithUserId(UUID.randomUUID());
-        entry.setSharedWithUsername("bob");
+    void geteilteAusgabeWirdHalbiertUndBeidenZugeordnet() {
+        List<FinanceEntry> saved = captureSaved(() -> service.create(sharedExpense("600.00", "20")));
 
-        FinanceEntry saved = create(entry);
+        assertThat(saved).hasSize(2);
+        assertThat(saved).allSatisfy(e -> {
+            assertThat(e.getType()).isEqualTo(FinanceService.TYPE_EXPENSE);
+            assertThat(e.getSplitRole()).isEqualTo(FinanceService.SPLIT_HALF);
+            assertThat(e.getAmount()).isEqualByComparingTo("300.00");
+            assertThat(e.getNetAmount()).isEqualByComparingTo("250.00");
+            assertThat(e.getVatAmount()).isEqualByComparingTo("50.00");
+        });
 
-        assertThat(saved.getSharedWithUserId()).isNull();
-        assertThat(saved.getSharedWithUsername()).isNull();
+        // Je eine Buchung pro Person, beide in derselben Gruppe
+        assertThat(saved).extracting(FinanceEntry::getCreatedByUsername)
+                .containsExactlyInAnyOrder("alice", "bob");
+        assertThat(saved).extracting(FinanceEntry::getSplitGroupId)
+                .containsOnly(saved.getFirst().getSplitGroupId());
+        // Die Partnerangabe selbst wird nie gespeichert
+        assertThat(saved).extracting(FinanceEntry::getSharedWithUserId).containsOnlyNulls();
+    }
+
+    /** Ungerade Betraege: der Rest-Cent bleibt beim Ersteller, die Summe stimmt. */
+    @Test
+    void geteilteAusgabeVerliertKeinenCent() {
+        List<FinanceEntry> saved = captureSaved(() -> service.create(sharedExpense("100.01", "0")));
+
+        assertThat(saved).extracting(FinanceEntry::getAmount)
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactlyInAnyOrder(new BigDecimal("50.01"), new BigDecimal("50.00"));
+    }
+
+    @Test
+    void ausgabeKannNichtMitSichSelbstGeteiltWerden() {
+        FinanceEntry entry = sharedExpense("600.00", "20");
+        entry.setSharedWithUserId(entry.getCreatedBy());
+
+        assertThatThrownBy(() -> service.create(entry))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -319,10 +351,8 @@ class FinanceServiceTest {
     }
 
     @Test
-    void ausgabenWerdenTrotzPartnerangabeNichtGeteilt() {
+    void ausgabeOhnePartnerangabeBleibtEineBuchung() {
         FinanceEntry entry = expense("120.00", "20");
-        entry.setSharedWithUserId(UUID.randomUUID());
-        entry.setSharedWithUsername("bob");
 
         List<FinanceEntry> saved = captureSaved(() -> service.create(entry));
 
@@ -513,6 +543,16 @@ class FinanceServiceTest {
                 .filter(e -> role.equals(e.getSplitRole()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Keine Buchung mit Rolle " + role));
+    }
+
+    /** Ausgabe von alice, zur Teilung mit bob markiert. */
+    private static FinanceEntry sharedExpense(String amount, String rate) {
+        FinanceEntry entry = expense(amount, rate);
+        entry.setCreatedBy(UUID.randomUUID());
+        entry.setCreatedByUsername("alice");
+        entry.setSharedWithUserId(UUID.randomUUID());
+        entry.setSharedWithUsername("bob");
+        return entry;
     }
 
     private static FinanceEntry expense(String amount, String rate) {

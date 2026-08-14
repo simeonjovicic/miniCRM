@@ -275,12 +275,20 @@ function OpenInvoices({ stats }: { stats: DashboardStats }) {
   const hidden = stats.openInvoiceCount - stats.openInvoices.length;
 
   return (
-    <div className="glass rounded-2xl p-4 sm:p-5">
+    /*
+      Die ganze Karte ist der Link in die Finanzen — nicht nur die Überschrift.
+      Deshalb darf hier drin nichts weiter klickbar sein: verschachtelte Links
+      sind ungültiges HTML. Die Rechnungszeilen sind reiner Text, das passt.
+    */
+    <Link
+      to="/finance"
+      className="glass block rounded-2xl p-4 transition-all hover:bg-white/60 active:scale-[0.99] sm:p-5"
+    >
       <div className="mb-4 flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-text-bright">Unbezahlt</h2>
-        <Link to="/finance" className="font-mono text-xs font-semibold text-status-lead hover:underline">
+        <span className="font-mono text-xs font-semibold text-status-lead">
           {formatCurrency(stats.openInvoiceTotal)}
-        </Link>
+        </span>
       </div>
 
       {stats.openInvoices.length === 0 ? (
@@ -296,7 +304,7 @@ function OpenInvoices({ stats }: { stats: DashboardStats }) {
       {hidden > 0 && (
         <p className="mt-2 text-[11px] text-text-secondary">… und {hidden} weitere</p>
       )}
-    </div>
+    </Link>
   );
 }
 

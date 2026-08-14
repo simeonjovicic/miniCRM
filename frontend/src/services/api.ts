@@ -4,6 +4,7 @@ import type {
   Customer,
   TodoItem,
   TodoComment,
+  ExternalRevenue,
   FinanceEntry,
   FinanceKind,
   FinanceSettings,
@@ -396,5 +397,18 @@ export const financeApi = {
     request<FinanceSettings>(`/finance/settings?year=${year}`, {
       method: "PUT",
       body: JSON.stringify(settings),
+    }),
+
+  /** Umsätze ausserhalb dieses CRM — zählen auf die Kleinunternehmergrenze */
+  externalRevenue: (year: number) =>
+    request<ExternalRevenue[]>(`/finance/external?year=${year}`),
+  setExternalRevenue: (
+    year: number,
+    userId: string,
+    body: { amount: number; note?: string; username?: string },
+  ) =>
+    request<ExternalRevenue | null>(`/finance/external/${userId}?year=${year}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
     }),
 };

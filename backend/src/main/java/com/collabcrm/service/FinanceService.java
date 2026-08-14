@@ -44,6 +44,12 @@ public class FinanceService {
     public static final String SPLIT_SHARE_IN = "SHARE_IN";
     /** Dieselbe Anteilsrechnung als Aufwand beim Ersteller */
     public static final String SPLIT_SHARE_OUT = "SHARE_OUT";
+    /**
+     * Haelfte einer geteilten AUSGABE. Anders als SHARE_IN/SHARE_OUT ist das
+     * keine interne Verrechnung, sondern echter Aufwand bei beiden — beide
+     * Haelften zaehlen deshalb ganz normal in die Jahressumme.
+     */
+    public static final String SPLIT_HALF = "HALF";
 
     private static final BigDecimal TWO = new BigDecimal("2");
 
@@ -82,12 +88,12 @@ public class FinanceService {
         normalize(entry);
         validate(entry);
 
-        // Ausgaben werden nie geteilt — eine Partnerangabe wird dort ignoriert,
-        // genau wie normalize() sie schon entfernt hat.
-        if (partnerId == null || !TYPE_INCOME.equals(entry.getType())) {
+        if (partnerId == null) {
             return repository.save(entry);
         }
-        return splitWithPartner(entry, partnerId, partnerName);
+        return TYPE_INCOME.equals(entry.getType())
+                ? splitWithPartner(entry, partnerId, partnerName)
+                : splitExpense(entry, partnerId, partnerName);
     }
 
     public FinanceEntry update(UUID id, FinanceEntry data) {
@@ -119,8 +125,10 @@ public class FinanceService {
         validate(entry);
 
         // Nachträglich teilen: nur, wenn der Eintrag noch keine Hälfte ist.
-        if (partnerId != null && !entry.isSplitHalf() && TYPE_INCOME.equals(entry.getType())) {
-            return splitWithPartner(entry, partnerId, partnerName);
+        if (partnerId != null && !entry.isSplitHalf()) {
+            return TYPE_INCOME.equals(entry.getType())
+                    ? splitWithPartner(entry, partnerId, partnerName)
+                    : splitExpense(entry, partnerId, partnerName);
         }
         return repository.save(entry);
     }
@@ -185,6 +193,59 @@ public class FinanceService {
      * Die interne Anteilsrechnung ist zunächst offen: sie ist gestellt, aber noch
      * nicht beglichen. Beim Partner taucht sie deshalb unter den offenen Posten auf.
      */
+    /**
+     * Teilt eine AUSGABE hälftig auf beide.
+     *
+     * Anders als bei Einnahmen entsteht keine interne Verrechnung: der Betrag
+     * wird schlicht halbiert und jede Person bucht ihre Hälfte selbst. Damit
+     * sinkt der Gewinn bei beiden um dasselbe, ohne dass Umsatz oder offene
+     * Posten davon berührt werden.
+     *
+     * Der Rest-Cent bleibt beim Ersteller, damit die beiden Hälften auch bei
+     * ungeraden Beträgen exakt die Summe ergeben.
+     */
+    private FinanceEntry splitExpense(FinanceEntry origin, UUID partnerId, String partnerName) {
+        if (partnerId.equals(origin.getCreatedBy())) {
+            throw new IllegalArgumentException("Ein Eintrag kann nicht mit dem Ersteller selbst geteilt werden.");
+        }
+
+        BigDecimal full = origin.getAmount();
+        BigDecimal partnerShare = full.divide(TWO, 2, RoundingMode.HALF_UP);
+        BigDecimal ownShare = full.subtract(partnerShare);
+        UUID group = origin.getSplitGroupId() != null ? origin.getSplitGroupId() : UUID.randomUUID();
+        String ownerName = origin.getCreatedByUsername();
+
+        FinanceEntry partnerHalf = new FinanceEntry();
+        partnerHalf.setType(TYPE_EXPENSE);
+        partnerHalf.setKind(origin.getKind());
+        partnerHalf.setStatus(origin.getStatus());
+        partnerHalf.setDescription(origin.getDescription());
+        partnerHalf.setDate(origin.getDate());
+        partnerHalf.setVatRate(origin.getVatRate());
+        partnerHalf.setInputMode(VatCalculator.MODE_GROSS);
+        partnerHalf.setAmount(partnerShare);
+        partnerHalf.setVatDeductible(origin.getVatDeductible());
+        partnerHalf.setCustomerId(origin.getCustomerId());
+        partnerHalf.setCustomerName(origin.getCustomerName());
+        partnerHalf.setCreatedBy(partnerId);
+        partnerHalf.setCreatedByUsername(partnerName);
+        partnerHalf.setSplitGroupId(group);
+        partnerHalf.setSplitRole(SPLIT_HALF);
+        partnerHalf.setSplitPartnerUsername(ownerName);
+        normalize(partnerHalf);
+        repository.save(partnerHalf);
+
+        // Die eigene Buchung schrumpft auf die andere Hälfte.
+        origin.setInputMode(VatCalculator.MODE_GROSS);
+        origin.setAmount(ownShare);
+        origin.setSplitGroupId(group);
+        origin.setSplitRole(SPLIT_HALF);
+        origin.setSplitPartnerUsername(partnerName);
+        normalize(origin);
+
+        return repository.save(origin);
+    }
+
     private FinanceEntry splitWithPartner(FinanceEntry origin, UUID partnerId, String partnerName) {
         if (!TYPE_INCOME.equals(origin.getType())) {
             throw new IllegalArgumentException("Nur Einnahmen können geteilt werden.");
@@ -289,7 +350,9 @@ public class FinanceService {
 
         if (TYPE_EXPENSE.equals(entry.getType())) {
             if (entry.getVatDeductible() == null) entry.setVatDeductible(true);
-            // Ausgaben werden nie geteilt — geteilt werden nur Gewinne.
+            // Die Partnerangabe ist auch hier nur eine Anweisung zum Aufteilen
+            // und wird nie am Eintrag gespeichert — create/update haben sie
+            // vorher schon ausgelesen.
             entry.setSharedWithUserId(null);
             entry.setSharedWithUsername(null);
         } else {

@@ -13,6 +13,7 @@ import type {
   FinanceStatus,
   FinanceType,
   FinanceUserStats,
+  OpenReceivable,
   ThresholdProgress,
   User,
   VatInputMode,
@@ -25,18 +26,62 @@ import type {
  */
 type StatusChoice = "SENT" | "PAID" | "DEPOSIT";
 
+/**
+ * Dieselben Farbslots wie im Zeiterfassungs-Chart. Die Farbe gehört zur Person,
+ * nicht zur Grenze — dieselbe Person ist in beiden Gruppen gleich eingefärbt.
+ */
+const PERSON_COLORS = ["#007AFF", "#30d158", "#ff9f0a", "#ff453a", "#bf5af2", "#64d2ff"];
+
+/**
+ * Farbe an einem Betrag markiert die RICHTUNG des Geldes — mehr nicht.
+ *
+ * Rein ist grün, raus ist rot. Kennzahlen ohne Richtung (USt-Zahllast, offene
+ * Posten, Netto-Nebenwerte) bleiben Tinte. Dadurch heisst Farbe hier immer
+ * dasselbe, statt fünf Kacheln fünf verschiedene Farben zu geben.
+ */
+const MONEY_TONE = {
+  in: "text-status-customer",
+  out: "text-status-churned",
+  neutral: "text-text-bright",
+} as const;
+
+type MoneyTone = keyof typeof MONEY_TONE;
+
+/** Vorzeichen entscheidet: positiv ist Zufluss, negativ Abfluss. */
+function toneOf(value: number): MoneyTone {
+  return value < 0 ? "out" : "in";
+}
+
+type ThresholdKind = {
+  key: "svs" | "smallBusiness";
+  /** Kurzform für die Achse — die Langform steht in den Zahlen darunter */
+  axis: string;
+  label: string;
+  basis: string;
+};
+
+const THRESHOLD_KINDS: ThresholdKind[] = [
+  { key: "svs", axis: "SVS", label: "SVS-Versicherungsgrenze", basis: "Basis: Gewinn" },
+  {
+    key: "smallBusiness",
+    axis: "Kleinunternehmer",
+    label: "Kleinunternehmergrenze",
+    basis: "Basis: Umsatz brutto",
+  },
+];
+
 const STATUS_CHOICES: { value: StatusChoice; label: string; forType?: FinanceType }[] = [
-  { value: "SENT", label: "Gesendet" },
+  { value: "SENT", label: "Offen" },
   { value: "PAID", label: "Bezahlt" },
   { value: "DEPOSIT", label: "Anzahlung", forType: "INCOME" },
 ];
 
-/** Beschriftung eines gespeicherten Eintrags — bei Ausgaben heißt "gesendet" schlicht "offen". */
+/** Beschriftung eines gespeicherten Eintrags. "Offen" gilt in beide Richtungen. */
 function statusLabel(entry: Pick<FinanceEntry, "kind" | "status" | "type">): string {
   if (entry.kind === "DEPOSIT") return "Anzahlung";
   if (entry.status === "PAID") return "Bezahlt";
   if (entry.status === "DRAFT") return "Entwurf";
-  return entry.type === "EXPENSE" ? "Offen" : "Gesendet";
+  return "Offen";
 }
 
 /** Leeres Formular. Ausgaben sind meist schon bezahlt, Einnahmen gerade rausgegangen. */
@@ -51,6 +96,12 @@ function emptyForm(type: FinanceType = "INCOME") {
     date: new Date().toISOString().slice(0, 10),
     status: (type === "EXPENSE" ? "PAID" : "SENT") as StatusChoice,
     parentId: "",
+    /**
+     * Zu zweit ist Teilen der Normalfall, deshalb standardmaessig an. Leeres
+     * sharedWithUserId heisst "die erste Partnerperson" — beim Anlegen des
+     * Formulars sind die Personen noch gar nicht geladen.
+     */
+    shareWithPartner: true,
     sharedWithUserId: "",
     customerId: "",
     customerName: "",
@@ -79,6 +130,8 @@ export default function FinancePage({ user }: { user: User }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   /** Leer = alle Personen. Trennt die beiden Bücher in der Liste. */
   const [personFilter, setPersonFilter] = useState("");
+  /** Wessen Kennzahlen-Karte offen ist. Leer = die eigene, siehe orderedPeople. */
+  const [personTab, setPersonTab] = useState("");
 
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -168,11 +221,11 @@ export default function FinancePage({ user }: { user: User }) {
    * behält den USt-Satz und trägt dadurch ihre halbe USt, beide stehen also gleich.
    */
   const split = useMemo(() => {
-    if (!form.sharedWithUserId || preview.gross <= 0) return null;
+    if (!form.shareWithPartner || partners.length === 0 || preview.gross <= 0) return null;
 
     const shareGross = toCents(preview.gross / 2);
     const share = splitVat(shareGross, "GROSS", form.vatRate);
-    const partner = partners.find((p) => p.id === form.sharedWithUserId);
+    const partner = partners.find((p) => p.id === form.sharedWithUserId) ?? partners[0];
 
     return {
       partnerName: partner?.username ?? "Partner",
@@ -184,12 +237,32 @@ export default function FinancePage({ user }: { user: User }) {
       myProfit: toCents(preview.net - share.net),
       partnerProfit: share.net,
     };
-  }, [form.sharedWithUserId, form.vatRate, preview, partners]);
+  }, [form.shareWithPartner, form.sharedWithUserId, form.vatRate, preview, partners]);
 
   const visibleEntries = useMemo(
     () => (personFilter ? entries.filter((e) => e.createdBy === personFilter) : entries),
     [entries, personFilter],
   );
+
+  /**
+   * Die eigene Person steht immer vorne — im Chart, in der Umschaltleiste und
+   * damit auch bei der Farbvergabe. Jeder sieht sich selbst zuerst und blau.
+   */
+  const orderedPeople = useMemo(() => {
+    const list = stats?.perUser ?? [];
+    return [
+      ...list.filter((p) => p.userId === user.id),
+      ...list.filter((p) => p.userId !== user.id),
+    ];
+  }, [stats, user.id]);
+
+  /**
+   * Ohne Auswahl die erste Person = man selbst. Kein Effekt nötig, der die
+   * Auswahl nachzieht. In einem Jahr ohne Einträge ist die Liste leer — daher
+   * ausdrücklich nullable, sonst fällt das erst zur Laufzeit auf.
+   */
+  const activePerson: FinanceUserStats | null =
+    orderedPeople.find((p) => p.userId === personTab) ?? orderedPeople[0] ?? null;
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -202,6 +275,12 @@ export default function FinancePage({ user }: { user: User }) {
     setForm((prev) => ({ ...prev, ...changes }));
   }
 
+  /** Mit wem geteilt wird — ohne Haken mit niemandem, ohne Auswahl mit der ersten. */
+  function selectedPartner(): User | undefined {
+    if (!form.shareWithPartner) return undefined;
+    return partners.find((p) => p.id === form.sharedWithUserId) ?? partners[0];
+  }
+
   /**
    * Beim Wechsel der Art den Status auf die übliche Vorgabe ziehen: Ausgaben hat
    * man schon bezahlt, Einnahmen sind gerade rausgegangen. Nebenbei erledigt das
@@ -211,13 +290,13 @@ export default function FinancePage({ user }: { user: User }) {
     patch({
       type,
       status: type === "EXPENSE" ? "PAID" : "SENT",
-      sharedWithUserId: type === "EXPENSE" ? "" : form.sharedWithUserId,
+      sharedWithUserId: form.sharedWithUserId,
       parentId: type === "EXPENSE" ? "" : form.parentId,
     });
   }
 
   function buildPayload(): Partial<FinanceEntry> {
-    const partner = partners.find((p) => p.id === form.sharedWithUserId);
+    const partner = selectedPartner();
     const isDeposit = form.status === "DEPOSIT";
     return {
       amount: parseFloat(form.amount),
@@ -248,8 +327,17 @@ export default function FinancePage({ user }: { user: User }) {
     e.preventDefault();
     setError(null);
 
+    // Vorher brach das hier wortlos ab — der Knopf wirkte tot und man kam nicht
+    // aus dem Bearbeiten-Modus heraus, ohne zu wissen warum.
     const parsed = parseFloat(form.amount);
-    if (!parsed || parsed <= 0 || !form.description.trim()) return;
+    if (!parsed || parsed <= 0) {
+      setError("Bitte einen Betrag größer als 0 eintragen.");
+      return;
+    }
+    if (!form.description.trim()) {
+      setError("Bitte eine Beschreibung eintragen.");
+      return;
+    }
 
     try {
       if (editingId) {
@@ -280,6 +368,8 @@ export default function FinancePage({ user }: { user: User }) {
       // Altdaten können noch DRAFT sein — Entwürfe gibt es nicht mehr, die gelten als gesendet.
       status: entry.kind === "DEPOSIT" ? "DEPOSIT" : entry.status === "PAID" ? "PAID" : "SENT",
       parentId: entry.parentId ?? "",
+      // Ein bestehender Eintrag darf sich beim Speichern nicht plötzlich teilen.
+      shareWithPartner: Boolean(entry.sharedWithUserId),
       sharedWithUserId: entry.sharedWithUserId ?? "",
       customerId: entry.customerId ?? "",
       customerName: entry.customerName ?? "",
@@ -384,26 +474,41 @@ export default function FinancePage({ user }: { user: User }) {
 
       {stats && (
         <>
+          {/*
+            Nur die drei Kacheln mit einer Geldrichtung tragen Farbe. Die
+            USt-Zahllast ist eine Schuld und die offenen Posten sind noch nicht
+            geflossen — beide bleiben Tinte, sonst leuchtet die ganze Reihe.
+          */}
           <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-4">
-            <StatCard label="Umsatz brutto" value={stats.totalRevenueGross} color="text-status-customer" />
-            <StatCard label="Aufwand" value={stats.totalExpenseCost} color="text-status-churned" />
+            {/* Umsatz netto: die USt ist kein Ertrag, sondern durchlaufender Posten. */}
             <StatCard
-              label="Gewinn"
-              value={stats.totalProfit}
-              color={stats.totalProfit >= 0 ? "text-accent" : "text-status-churned"}
+              label="Umsatz netto"
+              value={stats.totalRevenueNet}
+              tone="in"
+              hint={`${formatCurrency(stats.totalRevenueGross)} brutto`}
             />
+            <StatCard label="Aufwand" value={stats.totalExpenseCost} tone="out" />
+            <StatCard label="Gewinn" value={stats.totalProfit} tone={toneOf(stats.totalProfit)} />
             <StatCard
               label="USt-Zahllast"
               value={stats.totalVatBalance}
-              color={stats.totalVatBalance >= 0 ? "text-text-bright" : "text-status-customer"}
               hint={stats.totalVatBalance >= 0 ? "ans Finanzamt" : "Guthaben"}
             />
-            <StatCard label="Offen" value={stats.totalOpen} color="text-status-lead" hint="verschickt, unbezahlt" />
+            {/* Nur Kundenforderungen — Internes waere kein Geld von aussen. */}
+            <StatCard
+              label="Offen"
+              value={stats.totalOpen}
+              hint="brutto · Kunden schulden uns"
+            />
           </div>
 
-          {stats.perUser.map((u) => (
-            <PersonCard key={u.userId ?? u.username} person={u} />
-          ))}
+          {activePerson && (
+            <ThresholdPanel
+              people={orderedPeople}
+              activePerson={activePerson}
+              onSelect={setPersonTab}
+            />
+          )}
 
           {stats.openEntries.length > 0 && <OpenList stats={stats} />}
         </>
@@ -623,15 +728,13 @@ export default function FinancePage({ user }: { user: User }) {
             </div>
           )}
 
-          {form.type === "INCOME" && partners.length > 0 && !editingHalf && (
+          {partners.length > 0 && !editingHalf && (
             <div>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={Boolean(form.sharedWithUserId)}
-                  onChange={(e) =>
-                    patch({ sharedWithUserId: e.target.checked ? partners[0].id : "" })
-                  }
+                  checked={form.shareWithPartner}
+                  onChange={(e) => patch({ shareWithPartner: e.target.checked })}
                   className="h-4 w-4 accent-[var(--color-accent)]"
                 />
                 <span className="text-xs text-text-bright">
@@ -653,7 +756,41 @@ export default function FinancePage({ user }: { user: User }) {
                 </span>
               </label>
 
-              {split && (
+              {split && form.type === "EXPENSE" && (
+                <div
+                  className="mt-2 rounded-xl bg-accent/5 px-4 py-2.5"
+                  data-testid="split-preview"
+                >
+                  <p className="mb-1.5 text-[11px] font-medium text-text-bright">
+                    Es entstehen zwei Buchungen:
+                  </p>
+                  <ol className="space-y-1 text-[11px] text-text-secondary">
+                    <li>
+                      <span className="mr-1.5 font-mono text-text-bright">1.</span>
+                      deine Hälfte{" "}
+                      <strong className="font-mono text-text-bright">
+                        {formatCurrency(split.fullGross - split.shareGross)}
+                      </strong>
+                    </li>
+                    <li>
+                      <span className="mr-1.5 font-mono text-text-bright">2.</span>
+                      {split.partnerName} bucht{" "}
+                      <strong className="font-mono text-text-bright">
+                        {formatCurrency(split.shareGross)}
+                      </strong>
+                    </li>
+                  </ol>
+                  <p className="mt-2 border-t border-white/40 pt-1.5 text-[11px] text-text-secondary">
+                    Mindert den Gewinn bei euch beiden um je{" "}
+                    <strong className="font-mono text-text-bright">
+                      {formatCurrency(split.partnerProfit)}
+                    </strong>
+                    . Keine interne Rechnung, kein Effekt auf Umsatz oder offene Posten.
+                  </p>
+                </div>
+              )}
+
+              {split && form.type === "INCOME" && (
                 <div
                   className="mt-2 rounded-xl bg-accent/5 px-4 py-2.5"
                   data-testid="split-preview"
@@ -673,7 +810,7 @@ export default function FinancePage({ user }: { user: User }) {
                     <li>
                       <span className="mr-1.5 font-mono text-text-bright">2.</span>
                       {split.partnerName} stellt dir{" "}
-                      <strong className="font-mono text-accent">
+                      <strong className="font-mono text-text-bright">
                         {formatCurrency(split.shareGross)}
                       </strong>{" "}
                       in Rechnung
@@ -740,98 +877,200 @@ export default function FinancePage({ user }: { user: User }) {
   );
 }
 
-/* ── Grenzwerte und Kennzahlen pro Person ──────────────────────── */
+/* ── Grenzwerte und Kennzahlen ─────────────────────────────────── */
 
-function PersonCard({ person }: { person: FinanceUserStats }) {
+/**
+ * Grenzen und Kennzahlen in EINEM Element.
+ *
+ * Die Grenzen sind Meter, keine Säulen: die volle Spurbreite IST die Grenze,
+ * der gefüllte Teil die Auslastung. Als Säulen gegen eine 100-%-Achse wären die
+ * realen Werte (ein paar Prozent) unlesbare Striche — hier trägt die Spur den
+ * Kontext, und der Prozentwert steht als Zahl daneben.
+ *
+ * Beide Personen stehen untereinander, damit man sie vergleichen kann. Der
+ * Umschalter im Kopf steuert nur den Kennzahlen-Block darunter.
+ */
+function ThresholdPanel({
+  people,
+  activePerson,
+  onSelect,
+}: {
+  people: FinanceUserStats[];
+  activePerson: FinanceUserStats;
+  onSelect: (userId: string) => void;
+}) {
+  const colorOf = (index: number) => PERSON_COLORS[index % PERSON_COLORS.length];
+  const activeIndex = people.findIndex((p) => p.userId === activePerson.userId);
+
   return (
     <div className="glass mb-4 rounded-2xl p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-text-bright">{person.username}</h2>
-        <p className="font-mono text-lg font-bold text-accent">
-          {formatCurrency(person.profit)}
-          <span className="ml-1.5 text-[11px] font-normal text-text-secondary">Gewinn</span>
-        </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-text-bright">Grenzwerte &amp; Kennzahlen</h2>
+
+        {people.length > 1 && (
+          <div
+            className="flex flex-wrap items-center gap-1"
+            role="group"
+            aria-label="Kennzahlen einer Person anzeigen"
+          >
+            {people.map((person, i) => {
+              const active = person.userId === activePerson.userId;
+              return (
+                <button
+                  key={person.userId ?? person.username}
+                  onClick={() => onSelect(person.userId)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    active
+                      ? "bg-accent text-white shadow-sm"
+                      : "bg-white/50 text-text-secondary hover:text-text-bright"
+                  }`}
+                >
+                  {/* Farbpunkt wie am Meter, damit Balken und Kennzahlen zusammenfinden */}
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: colorOf(i) }}
+                    aria-hidden="true"
+                  />
+                  {person.username}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="mb-4 space-y-3">
-        <ThresholdBar
-          label="SVS-Versicherungsgrenze"
-          basis="Basis: Gewinn"
-          progress={person.svs}
-        />
-        <ThresholdBar
-          label="Kleinunternehmergrenze"
-          basis="Basis: Umsatz brutto"
-          progress={person.smallBusiness}
-        />
+      <div className="space-y-4">
+        {THRESHOLD_KINDS.map((kind) => (
+          <div key={kind.key}>
+            <p className="mb-2 text-xs font-medium text-text-bright">
+              {kind.label}
+              <span className="ml-1.5 text-[10px] font-normal text-text-secondary">{kind.basis}</span>
+            </p>
+            <div className="space-y-1.5">
+              {people.map((person, i) => (
+                <ThresholdMeter
+                  key={person.userId ?? person.username}
+                  kind={kind}
+                  person={person}
+                  color={colorOf(i)}
+                  showName={people.length > 1}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/40 pt-3 sm:grid-cols-5">
-        <Figure label="Umsatz brutto" value={person.revenueGross} />
-        <Figure label="Aufwand" value={person.expenseCost} />
-        <Figure label="USt-Schuld" value={person.vatOwed} />
-        <Figure label="Vorsteuer" value={person.inputVat} />
-        <Figure label="Zahllast" value={person.vatBalance} />
+      <div className="mt-4 border-t border-white/40 pt-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-xs font-semibold text-text-bright">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: colorOf(activeIndex < 0 ? 0 : activeIndex) }}
+              aria-hidden="true"
+            />
+            {activePerson.username}
+          </h3>
+          <p className={`font-mono text-lg font-bold ${MONEY_TONE[toneOf(activePerson.profit)]}`}>
+            {formatCurrency(activePerson.profit)}
+            <span className="ml-1.5 text-[11px] font-normal text-text-secondary">Gewinn</span>
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+          <Figure
+            label="Umsatz netto"
+            value={activePerson.revenueNet}
+            hint={`${formatCurrency(activePerson.revenueGross)} brutto`}
+          />
+          <Figure label="Aufwand" value={activePerson.expenseCost} />
+          <Figure label="USt-Schuld" value={activePerson.vatOwed} />
+          <Figure label="Vorsteuer" value={activePerson.inputVat} />
+          <Figure label="Zahllast" value={activePerson.vatBalance} />
+        </div>
       </div>
     </div>
   );
 }
 
-function ThresholdBar({
-  label,
-  basis,
-  progress,
+/**
+ * Ein Meter: Spur = Grenze, Füllung = Auslastung.
+ *
+ * Die Spur ist die eingefärbte Personenfarbe mit wenig Deckkraft, damit die
+ * Zuordnung über die ganze Breite lesbar bleibt. Überschritten färbt die Füllung
+ * rot — Farbe allein signalisiert das aber nicht, daneben steht es als Text.
+ */
+function ThresholdMeter({
+  kind,
+  person,
+  color,
+  showName,
 }: {
-  label: string;
-  basis: string;
-  progress: ThresholdProgress;
+  kind: ThresholdKind;
+  person: FinanceUserStats;
+  color: string;
+  showName: boolean;
 }) {
-  const percent = Math.max(0, Math.min(100, progress.percent));
-  const barColor = progress.exceeded
-    ? "bg-status-churned"
-    : percent >= 80
-      ? "bg-status-lead"
-      : "bg-accent";
+  const progress: ThresholdProgress = person[kind.key];
+  const filled = Math.max(0, Math.min(100, progress.percent));
 
   return (
-    <div>
-      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2">
-        <span className="text-xs font-medium text-text-bright">
-          {label}
-          <span className="ml-1.5 text-[10px] font-normal text-text-secondary">{basis}</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {showName && (
+        <span className="w-20 shrink-0 truncate text-[11px] text-text-secondary sm:w-28">
+          {person.username}
         </span>
-        <span className="font-mono text-[11px] text-text-secondary">
-          {formatCurrency(progress.current)} / {formatCurrency(progress.threshold)}
-        </span>
-      </div>
+      )}
+
       <div
-        className="h-2 overflow-hidden rounded-full bg-white/60"
+        className="h-2.5 min-w-[5rem] flex-1 overflow-hidden rounded-full"
+        style={{ background: `${color}26` }}
         role="progressbar"
-        aria-label={label}
+        aria-label={`${kind.label} — ${person.username}`}
         aria-valuenow={Math.round(progress.percent)}
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${percent}%` }} />
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${filled}%`,
+            background: progress.exceeded ? "#ff453a" : color,
+          }}
+        />
       </div>
-      <p className="mt-1 text-[11px] text-text-secondary">
+
+      <span className="w-11 shrink-0 text-right font-mono text-[11px] font-medium text-text-bright">
+        {Math.round(progress.percent)}%
+      </span>
+
+      <span className="w-full text-right font-mono text-[10px] text-text-secondary sm:w-auto">
+        {formatCurrency(progress.current)} / {formatCurrency(progress.threshold)}
+        {/* Sonst wäre unerklärlich, warum die Grenze mehr sieht als der Umsatz */}
+        {kind.key === "smallBusiness" && person.externalRevenue > 0 && (
+          <span className="ml-1.5 font-sans">
+            inkl. {formatCurrency(person.externalRevenue)} außerhalb
+          </span>
+        )}
         {progress.exceeded ? (
-          <span className="font-medium text-status-churned">
+          <span className="ml-1.5 font-sans font-medium text-status-churned">
             überschritten um {formatCurrency(Math.abs(progress.remaining))}
           </span>
         ) : (
-          <>noch {formatCurrency(progress.remaining)}</>
+          <span className="ml-1.5 font-sans">noch {formatCurrency(progress.remaining)}</span>
         )}
-      </p>
+      </span>
     </div>
   );
 }
 
-function Figure({ label, value }: { label: string; value: number }) {
+function Figure({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div>
       <p className="text-[10px] text-text-secondary">{label}</p>
       <p className="font-mono text-xs font-medium text-text-bright">{formatCurrency(value)}</p>
+      {hint && <p className="font-mono text-[10px] text-text-secondary">{hint}</p>}
     </div>
   );
 }
@@ -839,33 +1078,116 @@ function Figure({ label, value }: { label: string; value: number }) {
 /* ── Offene Posten ─────────────────────────────────────────────── */
 
 function OpenList({ stats }: { stats: FinanceStats }) {
+  /**
+   * Zwei Gruppen statt einer Liste: eine Kundenforderung ist Geld, das von aussen
+   * hereinkommt, eine interne Anteilsrechnung nur eine Umbuchung zwischen den
+   * beiden. Zusammengezählt ergäbe das eine Zahl, die es so nicht gibt.
+   */
+  const groups = [
+    { key: "customer", title: "Von Kunden", hint: "", rows: stats.openEntries.filter((o) => !o.internal) },
+    {
+      key: "internal",
+      title: "Intern · Aufteilung",
+      hint: "kein Außenstand",
+      rows: stats.openEntries.filter((o) => o.internal),
+    },
+  ].filter((g) => g.rows.length > 0);
+
   return (
     <div className="glass mb-6 rounded-2xl p-4 sm:p-5">
-      <h2 className="mb-3 text-sm font-semibold text-text-bright">
-        Offene Posten
-        <span className="ml-2 font-mono text-xs font-normal text-status-lead">
-          {formatCurrency(stats.totalOpen)}
-        </span>
-      </h2>
-      <div className="space-y-2">
-        {stats.openEntries.map((o) => (
-          <div key={o.id} className="flex items-center gap-3 rounded-xl bg-white/40 px-4 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-text-bright">{o.description}</p>
-              <p className="font-mono text-[11px] text-text-secondary">
-                {new Date(o.date).toLocaleDateString("de-DE")}
-                {o.username ? ` · ${o.username}` : ""}
-                {o.paid > 0 ? ` · ${formatCurrency(o.paid)} angezahlt` : ""}
+      <div className="mb-3 flex items-baseline justify-between gap-4 border-b border-white/50 pb-2">
+        <h2 className="text-sm font-semibold text-text-bright">Offene Posten</h2>
+        {/* Die Einheit steht einmal als Spaltenkopf statt an jeder Zahl */}
+        <div className="flex shrink-0 gap-4 text-[10px] font-medium uppercase tracking-wide text-text-secondary sm:gap-6">
+          <span className="w-20 text-right sm:w-24">Netto</span>
+          <span className="w-20 text-right sm:w-24">Brutto</span>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <div key={group.key}>
+            <div className="mb-1.5 flex items-baseline justify-between gap-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                {group.title}
+                {group.hint && (
+                  <span className="ml-1.5 font-normal normal-case tracking-normal">
+                    · {group.hint}
+                  </span>
+                )}
               </p>
+              {/*
+                Summe je Gruppe, nie über beide: "Kunden schulden uns" und "wir
+                schulden uns gegenseitig" sind zwei Zahlen, keine gemeinsame.
+                Ab zwei Posten — bei einem stünde sie in der Zeile darunter nochmal.
+              */}
+              {group.rows.length > 1 && (
+                <div className="flex shrink-0 gap-4 font-mono text-xs font-semibold text-text-bright sm:gap-6">
+                  <span className="w-20 text-right sm:w-24">
+                    {formatCurrency(sumBy(group.rows, (o) => o.openNet))}
+                  </span>
+                  <span className="w-20 text-right sm:w-24">
+                    {formatCurrency(sumBy(group.rows, (o) => o.open))}
+                  </span>
+                </div>
+              )}
             </div>
-            <p className="shrink-0 font-mono text-sm font-semibold text-status-lead">
-              {formatCurrency(o.open)}
-            </p>
+
+            <div className="space-y-1">
+              {group.rows.map((o) => (
+                <OpenRow key={o.id} row={o} />
+              ))}
+            </div>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+function OpenRow({ row }: { row: OpenReceivable }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 rounded-xl bg-white/40 px-3.5 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-text-bright">{openLabel(row)}</p>
+        <p className="truncate text-[11px] text-text-secondary">{openMeta(row)}</p>
+      </div>
+      {/* Beträge tragen Textfarbe — die Spaltenüberschrift sagt, was sie sind */}
+      <div className="flex shrink-0 gap-4 font-mono text-sm sm:gap-6">
+        <span className="w-20 text-right text-text-secondary sm:w-24">
+          {formatCurrency(row.openNet)}
+        </span>
+        <span className="w-20 text-right font-semibold text-text-bright sm:w-24">
+          {formatCurrency(row.open)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function sumBy(rows: OpenReceivable[], pick: (row: OpenReceivable) => number): number {
+  return rows.reduce((acc, row) => acc + pick(row), 0);
+}
+
+/**
+ * Der Server hängt an die interne Anteilsrechnung "— Anteil von X" an. Im
+ * internen Block steht die Richtung ohnehin in der Zeile darunter, also bleibt
+ * hier nur der Vorgang stehen. Findet sich das Muster nicht, bleibt alles.
+ */
+function openLabel(o: OpenReceivable): string {
+  if (!o.internal) return o.description;
+  const cut = o.description.lastIndexOf(" — Anteil ");
+  return cut > 0 ? o.description.slice(0, cut) : o.description;
+}
+
+/** Eine Zeile Kontext, mit Mittelpunkt getrennt — bei internen zuerst die Richtung. */
+function openMeta(o: OpenReceivable): string {
+  const date = new Date(o.date).toLocaleDateString("de-DE");
+  const parts = o.internal
+    ? [o.partner && o.username ? `${o.partner} schuldet ${o.username}` : null, date]
+    : [date, o.username, o.paid > 0 ? `${formatCurrency(o.paid)} angezahlt` : null];
+
+  return parts.filter(Boolean).join(" · ");
 }
 
 /* ── Einstellungen ─────────────────────────────────────────────── */
@@ -886,6 +1208,13 @@ function SettingsPanel({
   const [svs, setSvs] = useState(String(stats.settings.svsThreshold));
   const [smallBusiness, setSmallBusiness] = useState(String(stats.settings.smallBusinessThreshold));
   const [saving, setSaving] = useState(false);
+  /**
+   * Nebenumsätze je Person. Startwert kommt aus der Statistik, die ihn ohnehin
+   * schon mitliefert — spart einen zweiten Ladevorgang.
+   */
+  const [external, setExternal] = useState<Record<string, string>>(() =>
+    Object.fromEntries(stats.perUser.map((u) => [u.userId, String(u.externalRevenue || "")])),
+  );
 
   async function save() {
     setSaving(true);
@@ -894,6 +1223,16 @@ function SettingsPanel({
         svsThreshold: parseFloat(svs),
         smallBusinessThreshold: parseFloat(smallBusiness),
       });
+      for (const person of stats.perUser) {
+        const eingetippt = parseFloat(external[person.userId] ?? "") || 0;
+        // Nur schreiben, was sich geändert hat.
+        if (eingetippt !== person.externalRevenue) {
+          await financeApi.setExternalRevenue(year, person.userId, {
+            amount: eingetippt,
+            username: person.username,
+          });
+        }
+      }
       onSaved();
       onClose();
     } catch (err) {
@@ -942,6 +1281,39 @@ function SettingsPanel({
 
       </div>
 
+      {/*
+        Die Kleinunternehmergrenze gilt pro Person über ALLE ihre Umsätze. Was
+        nicht in diesem CRM steht, muss deshalb hier eingetragen werden — sonst
+        wirkt die Grenze weiter weg als sie ist.
+      */}
+      <div className="mt-4 border-t border-white/40 pt-3">
+        <p className="mb-2 text-[11px] font-medium text-text-bright">
+          Umsatz außerhalb dieses CRM
+          <span className="ml-1.5 font-normal text-text-secondary">
+            brutto · zählt auf die Kleinunternehmergrenze
+          </span>
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {stats.perUser.map((person) => (
+            <label key={person.userId} className="block">
+              <span className="mb-1 block text-[11px] text-text-secondary">{person.username}</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0,00"
+                value={external[person.userId] ?? ""}
+                onChange={(e) =>
+                  setExternal((prev) => ({ ...prev, [person.userId]: e.target.value }))
+                }
+                aria-label={`Umsatz außerhalb — ${person.username}`}
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-text-bright"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
       <p className="mt-3 text-[11px] text-text-secondary">
         Geteilte Einnahmen werden beim Anlegen in zwei Buchungen zerlegt — je eine
         pro Person, jede mit ihrer halben USt. Eine Einstellung braucht es dafür nicht.
@@ -987,6 +1359,8 @@ function EntryList({
   onDelete: (id: string) => void;
   onStatusChange: (entry: FinanceEntry, choice: StatusChoice) => void;
 }) {
+  const sharePercent = useSharePercentByGroup(entries);
+
   return (
     <div className="glass rounded-2xl p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1041,7 +1415,7 @@ function EntryList({
                     <td className="px-4 py-3.5 text-text-bright">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span>{entry.description}</span>
-                        <EntryBadges entry={entry} />
+                        <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
                       </div>
                     </td>
                     <td className="px-4 py-3.5">
@@ -1058,7 +1432,7 @@ function EntryList({
                     </td>
                     <td
                       className={`px-4 py-3.5 text-right font-mono font-medium ${
-                        entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"
+                        MONEY_TONE[entry.type === "EXPENSE" ? "out" : "in"]
                       }`}
                     >
                       {entry.type === "EXPENSE" ? "−" : "+"}
@@ -1081,26 +1455,28 @@ function EntryList({
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
-                      <EntryBadges entry={entry} />
+                      <EntryBadges entry={entry} sharePercent={sharePercent(entry)} />
                       <span className="font-mono text-[11px] text-text-secondary">
                         {new Date(entry.date).toLocaleDateString("de-DE")}
                       </span>
                     </div>
                     <p className="truncate text-sm text-text-bright">{entry.description}</p>
                     <p className="font-mono text-[11px] text-text-secondary">
-                      netto {formatCurrency(entry.netAmount)}
-                      {entry.vatRate > 0 ? ` · USt ${formatCurrency(entry.vatAmount)}` : ""}
+                      {entry.vatRate > 0 ? `USt ${formatCurrency(entry.vatAmount)} · ` : ""}
+                      {formatCurrency(entry.amount)} brutto
                     </p>
                   </div>
+                  {/* Hauptzahl netto wie in der Tabelle, Brutto steht als Nebenzeile links */}
                   <div className="shrink-0 text-right">
                     <p
                       className={`font-mono text-sm font-semibold ${
-                        entry.type === "INCOME" ? "text-status-customer" : "text-status-churned"
+                        MONEY_TONE[entry.type === "EXPENSE" ? "out" : "in"]
                       }`}
                     >
                       {entry.type === "EXPENSE" ? "−" : "+"}
-                      {formatCurrency(entry.amount)}
+                      {formatCurrency(entry.netAmount)}
                     </p>
+                    <p className="font-mono text-[10px] font-normal text-text-secondary">netto</p>
                   </div>
                   {canEdit(entry) && <RowActions entry={entry} onEdit={onEdit} onDelete={onDelete} />}
                 </div>
@@ -1113,23 +1489,63 @@ function EntryList({
   );
 }
 
+/**
+ * Wie viel Prozent der Kundenrechnung an den Partner gehen.
+ *
+ * Abgeleitet aus der Gegenbuchung derselben Aufteilung statt auf 50 % fest
+ * verdrahtet — dann stimmt die Anmerkung auch, falls die Quote sich einmal
+ * ändert. Die Gegenbuchung (SHARE_OUT) gehört demselben Ersteller wie die
+ * Kundenrechnung, steht also auch bei gesetztem Personenfilter mit in der Liste.
+ * Liefert undefined, wenn sie fehlt — dann bleibt es beim neutralen Hinweis.
+ */
+function useSharePercentByGroup(entries: FinanceEntry[]) {
+  const byGroup = useMemo(() => {
+    const full = new Map<string, number>();
+    const share = new Map<string, number>();
+
+    for (const entry of entries) {
+      if (!entry.splitGroupId) continue;
+      if (entry.splitRole === "ORIGIN") full.set(entry.splitGroupId, entry.amount);
+      else if (entry.splitRole === "SHARE_OUT" || entry.splitRole === "SHARE_IN") {
+        share.set(entry.splitGroupId, entry.amount);
+      }
+    }
+
+    const percents = new Map<string, number>();
+    for (const [group, amount] of full) {
+      const part = share.get(group);
+      if (part != null && amount > 0) percents.set(group, Math.round((part / amount) * 100));
+    }
+    return percents;
+  }, [entries]);
+
+  return (entry: FinanceEntry) =>
+    entry.splitGroupId ? byGroup.get(entry.splitGroupId) : undefined;
+}
+
 /** Beschriftet, welche Rolle eine Buchung in einer Aufteilung hat. */
-function splitLabel(entry: FinanceEntry): string | null {
+function splitLabel(entry: FinanceEntry, sharePercent?: number): string | null {
   const partner = entry.splitPartnerUsername ?? entry.sharedWithUsername;
   if (!partner) return null;
 
   switch (entry.splitRole) {
+    // Beide Hälften einer geteilten Ausgabe sind gleichwertig — keine Richtung.
+    case "HALF":
+      return `50/50 · ${partner}`;
+    // Die beiden Hälften sind selbst schon der Anteil — dort wäre "davon" falsch.
     case "SHARE_IN":
       return `Anteil von ${partner}`;
     case "SHARE_OUT":
       return `Anteil an ${partner}`;
     default:
-      return `50/50 · ${partner}`;
+      return sharePercent != null
+        ? `davon ${sharePercent} % an ${partner}`
+        : `50/50 · ${partner}`;
   }
 }
 
-function EntryBadges({ entry }: { entry: FinanceEntry }) {
-  const split = splitLabel(entry);
+function EntryBadges({ entry, sharePercent }: { entry: FinanceEntry; sharePercent?: number }) {
+  const split = splitLabel(entry, sharePercent);
   return (
     <>
       {split && (
@@ -1312,18 +1728,20 @@ function RowActions({
 function StatCard({
   label,
   value,
-  color,
   hint,
+  tone = "neutral",
 }: {
   label: string;
   value: number;
-  color: string;
   hint?: string;
+  tone?: MoneyTone;
 }) {
   return (
     <div className="glass rounded-2xl p-3 sm:p-4">
       <p className="text-[10px] font-medium text-text-secondary sm:text-xs">{label}</p>
-      <p className={`mt-1 font-mono text-base font-bold sm:text-xl ${color}`}>{formatCurrency(value)}</p>
+      <p className={`mt-1 font-mono text-base font-bold sm:text-xl ${MONEY_TONE[tone]}`}>
+        {formatCurrency(value)}
+      </p>
       {hint && <p className="mt-0.5 text-[10px] text-text-secondary">{hint}</p>}
     </div>
   );

@@ -1,5 +1,6 @@
 package com.collabcrm.controller;
 
+import com.collabcrm.model.ExternalRevenue;
 import com.collabcrm.model.FinanceEntry;
 import com.collabcrm.model.FinanceSettings;
 import com.collabcrm.service.FinanceService;
@@ -99,8 +100,12 @@ public class FinanceController {
     }
 
     private void broadcast(String type, UUID id) {
-        messagingTemplate.convertAndSend("/topic/finance",
-                Map.of("type", type, "entityId", id.toString()));
+        // Nicht jede Aenderung haengt an einer Entitaet — die Nebenumsaetze etwa
+        // betreffen das ganze Jahr. Map.of vertraegt kein null, daher HashMap.
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", type);
+        message.put("entityId", id != null ? id.toString() : null);
+        messagingTemplate.convertAndSend("/topic/finance", message);
     }
 
     /**
@@ -112,5 +117,24 @@ public class FinanceController {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleBadRequest(RuntimeException ex) {
         return Map.of("error", ex.getMessage());
+    }
+
+    /* ── Umsatz ausserhalb dieses CRM ─────────────────────────────── */
+
+    @GetMapping("/external")
+    public List<ExternalRevenue> externalRevenue(
+            @RequestParam(defaultValue = "#{T(java.time.Year).now().getValue()}") int year) {
+        return settingsService.externalRevenue(year);
+    }
+
+    @PutMapping("/external/{userId}")
+    public ExternalRevenue setExternalRevenue(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "#{T(java.time.Year).now().getValue()}") int year,
+            @RequestBody ExternalRevenue body) {
+        ExternalRevenue saved = settingsService.setExternalRevenue(
+                year, userId, body.getUsername(), body.getAmount(), body.getNote());
+        broadcast("FINANCE_UPDATED", null);
+        return saved;
     }
 }
