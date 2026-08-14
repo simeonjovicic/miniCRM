@@ -34,8 +34,16 @@ public class CrdtState {
     @Column(name = "crdt_type", length = 20, nullable = false)
     private String crdtType;
 
+    /**
+     * Der serialisierte CRDT-Zustand.
+     *
+     * Der Typ wird vom Dialekt bestimmt statt fest als "jsonb" geschrieben:
+     * PostgreSQL bekommt weiterhin jsonb, H2 einen passenden JSON-Typ. Vorher
+     * liess sich die Tabelle im Test gar nicht anlegen, wodurch die
+     * CRDT-Synchronisation nie gegen eine echte Datenbank prüfbar war.
+     */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "state", columnDefinition = "jsonb", nullable = false)
+    @Column(name = "state", nullable = false)
     private String state;
 
     /** Wird automatisch bei jedem Speichern aktualisiert */

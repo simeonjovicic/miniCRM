@@ -19,7 +19,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "finance_external_revenue",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"year", "user_id"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"fiscal_year", "user_id"})
 )
 public class ExternalRevenue {
 
@@ -27,7 +27,13 @@ public class ExternalRevenue {
     @GeneratedValue
     private UUID id;
 
-    @Column(nullable = false)
+    /**
+     * Die Spalte heisst bewusst nicht "year": das ist in H2 ein reserviertes
+     * Wort, wodurch sich die Tabelle im Test nicht anlegen liess. PostgreSQL
+     * verkraftet es, die Tests laufen aber gegen H2. Gleiche Regel wie bei
+     * FinanceSettings.
+     */
+    @Column(name = "fiscal_year", nullable = false)
     private Integer year;
 
     @Column(name = "user_id", nullable = false)

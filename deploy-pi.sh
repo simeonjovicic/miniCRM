@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PI_HOST="${1:-dietpi@100.120.87.43}"
+PI_HOST="${1:-simeon@100.120.87.43}"
 # Muss zu WorkingDirectory in minicrm.service passen — wird unten geprueft.
 PI_DIR="${PI_DIR:-/home/simeon/minicrm}"
 # Tests laufen mit; zum Ueberspringen: SKIP_TESTS=1 ./deploy-pi.sh
