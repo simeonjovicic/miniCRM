@@ -4,7 +4,6 @@ import {
   dashboardApi,
   type DashboardInvoice,
   type DashboardStats,
-  type DashboardTodo,
   type DashboardUserProfit,
   type UserPresence,
 } from "../services/api";

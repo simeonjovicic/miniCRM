@@ -24,6 +24,10 @@ export const testCustomer: Customer = {
   phone: "+49 123 456",
   status: "LEAD",
   address: null,
+  street: null,
+  zipCity: null,
+  country: null,
+  uid: null,
   createdBy: "u-1",
   createdAt: "2025-03-01T00:00:00Z",
 };
@@ -36,6 +40,10 @@ export const testCustomer2: Customer = {
   phone: null,
   status: "CUSTOMER",
   address: null,
+  street: null,
+  zipCity: null,
+  country: null,
+  uid: null,
   createdBy: "u-1",
   createdAt: "2025-03-02T00:00:00Z",
 };

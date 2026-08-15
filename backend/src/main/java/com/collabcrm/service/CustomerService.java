@@ -49,6 +49,10 @@ public class CustomerService {
         if (updates.getPhone() != null) existing.setPhone(updates.getPhone());
         if (updates.getAddress() != null) existing.setAddress(updates.getAddress());
         if (updates.getStatus() != null) existing.setStatus(updates.getStatus());
+        if (updates.getStreet() != null) existing.setStreet(updates.getStreet());
+        if (updates.getZipCity() != null) existing.setZipCity(updates.getZipCity());
+        if (updates.getCountry() != null) existing.setCountry(updates.getCountry());
+        if (updates.getUid() != null) existing.setUid(updates.getUid());
         return customerRepository.save(existing);
     }
 

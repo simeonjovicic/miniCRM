@@ -123,10 +123,29 @@ export default function CustomerDetailPage({
             type="tel"
             onChange={(v) => crdt.setField("phone", v)}
           />
+          {/*
+            Zeilenweise statt als ein Freitextfeld: genau so steht die Anschrift
+            auf der Rechnung. Wer sie hier einmal pflegt, tippt sie dort nie wieder.
+          */}
           <EditableField
-            label="Adresse"
-            value={crdt.getField("address") || customer.address || ""}
-            onChange={(v) => crdt.setField("address", v)}
+            label="Straße"
+            value={crdt.getField("street") || customer.street || ""}
+            onChange={(v) => crdt.setField("street", v)}
+          />
+          <EditableField
+            label="PLZ + Ort"
+            value={crdt.getField("zipCity") || customer.zipCity || ""}
+            onChange={(v) => crdt.setField("zipCity", v)}
+          />
+          <EditableField
+            label="Land"
+            value={crdt.getField("country") || customer.country || ""}
+            onChange={(v) => crdt.setField("country", v)}
+          />
+          <EditableField
+            label="UID-Nr."
+            value={crdt.getField("uid") || customer.uid || ""}
+            onChange={(v) => crdt.setField("uid", v)}
           />
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">Status</label>

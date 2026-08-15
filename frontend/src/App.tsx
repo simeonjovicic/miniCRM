@@ -591,7 +591,7 @@ function AppShell({
             <Route path="/todos" element={<TodosPage user={user} />} />
             <Route path="/finance" element={<FinancePage user={user} />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/rechnungen" element={<InvoicesPage />} />
+            <Route path="/rechnungen" element={<InvoicesPage user={user} />} />
             <Route path="/timer" element={<TimerPage user={user} />} />
             <Route path="/storage" element={<StoragePage />} />
             <Route path="*" element={<Navigate to="/" />} />

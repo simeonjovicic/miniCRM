@@ -32,7 +32,15 @@ public class CrdtSyncService {
 
     private final LamportClock serverClock = new LamportClock();
 
-    private static final Set<String> CUSTOMER_JPA_FIELDS = Set.of("name", "email", "company", "phone", "address", "status");
+    /**
+     * Welche CRDT-Felder auch in die customers-Tabelle durchgereicht werden.
+     * Wer hier ein Feld vergisst, bearbeitet es in der Oberfläche scheinbar
+     * erfolgreich — gespeichert wird es aber nur im CRDT-Zustand und fehlt in
+     * jeder REST-Abfrage. Deshalb: Liste UND switch unten gemeinsam pflegen.
+     */
+    private static final Set<String> CUSTOMER_JPA_FIELDS = Set.of(
+            "name", "email", "company", "phone", "address", "status",
+            "street", "zipCity", "country", "uid");
 
 
     private final Map<String, Object> crdtCache = new ConcurrentHashMap<>();
@@ -97,6 +105,10 @@ public class CrdtSyncService {
                     case "phone" -> updates.setPhone(val);
                     case "address" -> updates.setAddress(val);
                     case "status" -> updates.setStatus(val);
+                    case "street" -> updates.setStreet(val);
+                    case "zipCity" -> updates.setZipCity(val);
+                    case "country" -> updates.setCountry(val);
+                    case "uid" -> updates.setUid(val);
                 }
                 customerService.update(UUID.fromString(op.getEntityId()), updates);
             } catch (Exception e) {

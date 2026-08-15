@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useId, useRef } from "react";
 
 interface EditableFieldProps {
   label: string;
@@ -13,6 +13,9 @@ export default function EditableField({
   onChange,
   type = "text",
 }: EditableFieldProps) {
+  // Ohne htmlFor/id gehoert die Beschriftung nicht zum Feld — Screenreader
+  // lesen dann nur "Eingabefeld", und ansteuern laesst es sich auch nicht.
+  const id = useId();
   const [local, setLocal] = useState(value);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const isFocused = useRef(false);
@@ -33,8 +36,11 @@ export default function EditableField({
 
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-text-secondary">{label}</label>
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-text-secondary">
+        {label}
+      </label>
       <input
+        id={id}
         type={type}
         value={local}
         onChange={(e) => handleChange(e.target.value)}

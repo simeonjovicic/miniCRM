@@ -77,6 +77,10 @@ export function useCrdt(
   // 1. Initialen CRDT-State vom Server laden (einmalig)
   // =====================================================
   useEffect(() => {
+    // Ohne Entity gibt es nichts zu laden — die Rechnungsseite haelt den Hook
+    // schon bereit, bevor ein Kunde gewaehlt ist.
+    if (!entityId) return;
+
     customersApi.getCrdtState(entityId).then((data) => {
       const state = stateRef.current;
       for (const [key, val] of Object.entries(data)) {

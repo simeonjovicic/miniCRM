@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { generateInvoicePdf, type InvoicePosition } from "../utils/invoicePdf";
+import { customersApi } from "../services/api";
+import { useCrdt } from "../hooks/useCrdt";
+import type { Customer } from "../types";
 
 const LS_KEY_LAST_NUMBER = "minicrm:lastInvoiceNumber";
 
@@ -20,7 +23,26 @@ function emptyPosition(): InvoicePosition {
   return { title: "", details: "", vatRate: 20, unitPrice: 0 };
 }
 
-export default function InvoicesPage() {
+/**
+ * Empfängerdaten, wie sie am Kunden gespeichert sind.
+ *
+ * Auf einer Rechnung steht die Firma, wenn es eine gibt — der Personenname nur
+ * dann, wenn der Kunde keine trägt. Land ist vorbelegt, weil ohne Angabe die
+ * Zeile im PDF sonst leer bliebe.
+ */
+function receiverOf(customer: Customer) {
+  return {
+    name: customer.company?.trim() || customer.name,
+    street: customer.street ?? "",
+    cityLine: customer.zipCity ?? "",
+    country: customer.country?.trim() || "Österreich",
+    uid: customer.uid ?? "",
+  };
+}
+
+export default function InvoicesPage({ user }: { user: { id: string } }) {
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState("");
   const [receiverName, setReceiverName] = useState("");
   const [receiverStreet, setReceiverStreet] = useState("");
   const [receiverCityLine, setReceiverCityLine] = useState("");
@@ -31,6 +53,58 @@ export default function InvoicesPage() {
   const [positions, setPositions] = useState<InvoicePosition[]>([emptyPosition()]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    customersApi.list().then(setCustomers).catch(() => setCustomers([]));
+  }, []);
+
+  const selected = customers.find((c) => c.id === customerId) ?? null;
+
+  /**
+   * Zurückgeschrieben wird über CRDT und nicht über customersApi.update: die
+   * Kundenfelder werden aus dem CRDT-Zustand in die Tabelle gespiegelt, ein
+   * REST-Schreiber würde beim nächsten Abgleich wieder überschrieben.
+   */
+  const crdt = useCrdt("CUSTOMER", customerId, `client-${user.id}`);
+
+  /** Felder, die von den gespeicherten Kundendaten abweichen. */
+  const abweichungen = useMemo(() => {
+    if (!selected) return [];
+    const soll = receiverOf(selected);
+    const paare: [string, string, string][] = [
+      ["street", receiverStreet, soll.street],
+      ["zipCity", receiverCityLine, soll.cityLine],
+      ["country", receiverCountry, soll.country],
+      ["uid", receiverUid, soll.uid],
+    ];
+    return paare
+      .filter(([, ist, gespeichert]) => ist.trim() !== gespeichert.trim())
+      .map(([feld, ist]) => [feld, ist.trim()] as [string, string]);
+  }, [selected, receiverStreet, receiverCityLine, receiverCountry, receiverUid]);
+
+  function pickCustomer(id: string) {
+    setCustomerId(id);
+    const customer = customers.find((c) => c.id === id);
+    // Ohne Auswahl bleibt stehen, was schon getippt wurde — sonst wäre das
+    // versehentliche Zurücksetzen der Auswahl teurer als die Auswahl selbst.
+    if (!customer) return;
+
+    const soll = receiverOf(customer);
+    setReceiverName(soll.name);
+    setReceiverStreet(soll.street);
+    setReceiverCityLine(soll.cityLine);
+    setReceiverCountry(soll.country);
+    setReceiverUid(soll.uid);
+  }
+
+  function saveToCustomer() {
+    for (const [feld, wert] of abweichungen) crdt.setField(feld, wert);
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customerId ? { ...c, ...Object.fromEntries(abweichungen) } : c,
+      ),
+    );
+  }
 
   function updatePosition(index: number, patch: Partial<InvoicePosition>) {
     setPositions((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
@@ -108,6 +182,26 @@ export default function InvoicesPage() {
       {/* Empfänger */}
       <section className="glass-strong rounded-2xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-text-bright uppercase tracking-wide">Empfänger</h2>
+
+        {/*
+          Kunde auswählen statt Anschrift abtippen. Die Felder darunter bleiben
+          offen — nicht jeder Rechnungsempfänger steht im CRM.
+        */}
+        <Field label="Kunde übernehmen">
+          <select
+            value={customerId}
+            onChange={(e) => pickCustomer(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">— ohne Kunden, von Hand ausfüllen</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.company?.trim() || c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Firma / Name">
             <input
@@ -150,6 +244,21 @@ export default function InvoicesPage() {
             />
           </Field>
         </div>
+
+        {/*
+          Korrigiert man hier etwas, gilt es erst einmal nur für diese Rechnung.
+          Der Knopf macht daraus Stammdaten — damit die nächste Rechnung von
+          selbst stimmt, ohne dass ein Formular unbemerkt den Kunden ändert.
+        */}
+        {selected && abweichungen.length > 0 && (
+          <button
+            type="button"
+            onClick={saveToCustomer}
+            className="rounded-full bg-white/60 px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-all hover:text-text-bright"
+          >
+            Abweichungen bei {selected.company?.trim() || selected.name} übernehmen
+          </button>
+        )}
       </section>
 
       {/* Rechnungs-Meta */}
@@ -291,7 +400,15 @@ export default function InvoicesPage() {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-border-strong/50 bg-white/70 px-3 py-2 text-sm text-text-bright placeholder-text-secondary/60 outline-none focus:border-accent focus:bg-white transition-all";
+  "w-full rounded-lg border border-border-strong/50 bg-white/70 px-3 py-2.5 text-sm text-text-bright placeholder-text-secondary/60 outline-none focus:border-accent focus:bg-white transition-all";
+
+/**
+ * Auswahlfelder bekommen ihre Hoehe fest vorgegeben statt aus der Polsterung.
+ * Ein <select> misst sich sonst am Bedienelement des Betriebssystems und faellt
+ * je nach Browser flacher aus als das Textfeld daneben — in Safari sichtbar,
+ * in Chromium nicht. Mit fester Hoehe steht ueberall dieselbe Zeile.
+ */
+const selectCls = inputCls + " h-[42px]";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

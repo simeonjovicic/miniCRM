@@ -12,7 +12,15 @@ export interface Customer {
   email: string | null;
   company: string | null;
   phone: string | null;
+  /** ALTBESTAND: Adresse als ein Freitextfeld, abgelöst durch die vier Zeilen darunter */
   address: string | null;
+  /** Rechnungsanschrift, zeilenweise getrennt — so steht sie im Rechnungs-PDF */
+  street: string | null;
+  /** PLZ und Ort in einer Zeile: "1010 Wien" */
+  zipCity: string | null;
+  country: string | null;
+  /** Umsatzsteuer-Identifikationsnummer, z. B. ATU12345678 */
+  uid: string | null;
   status: "LEAD" | "PROSPECT" | "CUSTOMER" | "CHURNED";
   createdBy: string;
   createdAt: string;

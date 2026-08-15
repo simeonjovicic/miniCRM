@@ -69,6 +69,29 @@ class CrdtSyncServiceTest {
         verify(messagingTemplate).convertAndSend(eq("/topic/customers"), any(CrdtOperationDto.class));
     }
 
+    /**
+     * Die Rechnungsanschrift muss auch in der customers-Tabelle ankommen, nicht
+     * nur im CRDT-Zustand — sonst liefert die Kundenliste sie nie aus, und die
+     * Rechnungsseite kann nichts uebernehmen. Genau das passiert, wenn ein Feld
+     * in CUSTOMER_JPA_FIELDS oder im switch daneben vergessen wird.
+     */
+    @Test
+    void lwwUpdateSpiegeltRechnungsfelderInDieTabelle() {
+        service.applyOperation(lwwOp("street", "Josefsplatz 6", "A", 1));
+        service.applyOperation(lwwOp("zipCity", "1010 Wien", "A", 2));
+        service.applyOperation(lwwOp("country", "Österreich", "A", 3));
+        service.applyOperation(lwwOp("uid", "ATU12345678", "A", 4));
+
+        var captor = ArgumentCaptor.forClass(com.collabcrm.model.Customer.class);
+        verify(customerService, times(4)).update(eq(UUID.fromString(customerId)), captor.capture());
+
+        var werte = captor.getAllValues();
+        assertThat(werte.get(0).getStreet()).isEqualTo("Josefsplatz 6");
+        assertThat(werte.get(1).getZipCity()).isEqualTo("1010 Wien");
+        assertThat(werte.get(2).getCountry()).isEqualTo("Österreich");
+        assertThat(werte.get(3).getUid()).isEqualTo("ATU12345678");
+    }
+
     @Test
     void lwwUpdateHigherTimestampWins() {
         var op1 = lwwOp("name", "Old", "A", 1);

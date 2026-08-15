@@ -32,7 +32,28 @@ public class Customer extends AbstractPersistable<UUID> {
 
     private String phone;
 
+    /**
+     * ALTBESTAND: die Adresse als ein Freitextfeld. Für eine Rechnung taugt das
+     * nicht — dort stehen Straße, Ort und Land in eigenen Zeilen. Ersetzt durch
+     * die vier Felder darunter; die Spalte bleibt, damit alte Einträge nicht
+     * verlorengehen.
+     */
     private String address;
+
+    /**
+     * Rechnungsanschrift, getrennt nach Zeilen — genau so, wie sie im PDF steht.
+     * Alles optional: ein Lead hat oft nur einen Namen, und eine unvollständige
+     * Adresse ist besser als gar kein Kunde.
+     */
+    private String street;
+
+    /** PLZ und Ort in einer Zeile, wie auf dem Kuvert: "1010 Wien". */
+    private String zipCity;
+
+    private String country;
+
+    /** Umsatzsteuer-Identifikationsnummer, z. B. ATU12345678. */
+    private String uid;
 
     /** Kunden-Status in der Sales-Pipeline: LEAD → PROSPECT → CUSTOMER → CHURNED */
     @Column(nullable = false)
@@ -71,6 +92,18 @@ public class Customer extends AbstractPersistable<UUID> {
 
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
+
+    public String getStreet() { return street; }
+    public void setStreet(String street) { this.street = street; }
+
+    public String getZipCity() { return zipCity; }
+    public void setZipCity(String zipCity) { this.zipCity = zipCity; }
+
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
+
+    public String getUid() { return uid; }
+    public void setUid(String uid) { this.uid = uid; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
