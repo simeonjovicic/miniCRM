@@ -121,6 +121,14 @@ public class FinanceService {
         entry.setAttachmentPath(data.getAttachmentPath());
         entry.setAttachmentName(data.getAttachmentName());
 
+        // Eigentuemer umstellen. Nur auf ausdrueckliche Angabe: ein Update ohne
+        // das Feld — etwa vom Statusumschalter — darf die Zurechnung nicht
+        // anfassen. Altbestand bekommt damit erst beim Bearbeiten einen
+        // ausdruecklichen Eigentuemer.
+        if (data.getOwnerId() != null) {
+            reassign(entry, data.getOwnerId(), data.getOwnerUsername());
+        }
+
         normalize(entry);
         validate(entry);
 
@@ -131,6 +139,29 @@ public class FinanceService {
                     : splitExpense(entry, partnerId, partnerName);
         }
         return repository.save(entry);
+    }
+
+    /**
+     * Schreibt den Eintrag einer anderen Person zu.
+     *
+     * Bei einer geteilten Buchung wird das abgelehnt. Eine Aufteilung besteht
+     * aus Buchungen, die sich gegenseitig bedingen — die Kundenrechnung bei dem
+     * einen, die Anteilsrechnung beim anderen, die Gegenbuchung wieder beim
+     * ersten. Zu zweit gibt es als neuen Eigentuemer nur den Partner; die
+     * Aufteilung fiele damit in sich zusammen und jemand rechnete mit sich
+     * selbst ab. Erst die Aufteilung aufloesen, dann zuordnen.
+     */
+    private void reassign(FinanceEntry entry, UUID newOwnerId, String newOwnerName) {
+        if (newOwnerId.equals(entry.ownerId())) return;
+
+        if (entry.getSplitGroupId() != null) {
+            throw new IllegalArgumentException(
+                    "Eine geteilte Buchung kann nicht umgeschrieben werden. "
+                            + "Erst die Aufteilung aufloesen, dann zuordnen.");
+        }
+
+        entry.setOwnerId(newOwnerId);
+        entry.setOwnerUsername(newOwnerName);
     }
 
     /**
@@ -205,15 +236,15 @@ public class FinanceService {
      * ungeraden Beträgen exakt die Summe ergeben.
      */
     private FinanceEntry splitExpense(FinanceEntry origin, UUID partnerId, String partnerName) {
-        if (partnerId.equals(origin.getCreatedBy())) {
-            throw new IllegalArgumentException("Ein Eintrag kann nicht mit dem Ersteller selbst geteilt werden.");
+        if (partnerId.equals(origin.ownerId())) {
+            throw new IllegalArgumentException("Ein Eintrag kann nicht mit sich selbst geteilt werden.");
         }
 
         BigDecimal full = origin.getAmount();
         BigDecimal partnerShare = full.divide(TWO, 2, RoundingMode.HALF_UP);
         BigDecimal ownShare = full.subtract(partnerShare);
         UUID group = origin.getSplitGroupId() != null ? origin.getSplitGroupId() : UUID.randomUUID();
-        String ownerName = origin.getCreatedByUsername();
+        String ownerName = origin.ownerName();
 
         FinanceEntry partnerHalf = new FinanceEntry();
         partnerHalf.setType(TYPE_EXPENSE);
@@ -229,6 +260,8 @@ public class FinanceService {
         partnerHalf.setCustomerName(origin.getCustomerName());
         partnerHalf.setCreatedBy(partnerId);
         partnerHalf.setCreatedByUsername(partnerName);
+        partnerHalf.setOwnerId(partnerId);
+        partnerHalf.setOwnerUsername(partnerName);
         partnerHalf.setSplitGroupId(group);
         partnerHalf.setSplitRole(SPLIT_HALF);
         partnerHalf.setSplitPartnerUsername(ownerName);
@@ -250,13 +283,13 @@ public class FinanceService {
         if (!TYPE_INCOME.equals(origin.getType())) {
             throw new IllegalArgumentException("Nur Einnahmen können geteilt werden.");
         }
-        if (partnerId.equals(origin.getCreatedBy())) {
-            throw new IllegalArgumentException("Ein Eintrag kann nicht mit dem Ersteller selbst geteilt werden.");
+        if (partnerId.equals(origin.ownerId())) {
+            throw new IllegalArgumentException("Ein Eintrag kann nicht mit sich selbst geteilt werden.");
         }
 
         BigDecimal shareGross = origin.getAmount().divide(TWO, 2, RoundingMode.HALF_UP);
         UUID group = origin.getSplitGroupId() != null ? origin.getSplitGroupId() : UUID.randomUUID();
-        String ownerName = origin.getCreatedByUsername();
+        String ownerName = origin.ownerName();
 
         // Der Partner stellt dem Ersteller seinen Anteil in Rechnung.
         FinanceEntry partnerIncome = shareEntry(origin, TYPE_INCOME, partnerId, partnerName,
@@ -265,7 +298,7 @@ public class FinanceService {
         partnerIncome.setVatDeductible(null);
 
         // Beim Ersteller ist dieselbe Rechnung Aufwand — mit abziehbarer Vorsteuer.
-        FinanceEntry ownExpense = shareEntry(origin, TYPE_EXPENSE, origin.getCreatedBy(), ownerName,
+        FinanceEntry ownExpense = shareEntry(origin, TYPE_EXPENSE, origin.ownerId(), ownerName,
                 partnerName, shareGross, group, SPLIT_SHARE_OUT,
                 "Anteil an " + displayName(partnerName));
         ownExpense.setVatDeductible(true);
@@ -299,6 +332,11 @@ public class FinanceService {
         share.setCustomerName(source.getCustomerName());
         share.setCreatedBy(ownerId);
         share.setCreatedByUsername(ownerName);
+        // Eigentuemer ausdruecklich setzen und nicht auf den Rueckfall auf
+        // createdBy vertrauen: wird der Eigentuemer des Vorgangs spaeter
+        // umgestellt, muessen die Anteile eindeutig zuzuordnen sein.
+        share.setOwnerId(ownerId);
+        share.setOwnerUsername(ownerName);
         share.setSplitGroupId(group);
         share.setSplitRole(role);
         share.setSplitPartnerUsername(partnerName);

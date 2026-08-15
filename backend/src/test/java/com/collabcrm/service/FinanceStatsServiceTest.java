@@ -160,6 +160,41 @@ class FinanceStatsServiceTest {
                 .containsEntry("totalVatBalance", dec("300.00"));
     }
 
+    // ── Wem der Umsatz zugerechnet wird ───────────────────────────────
+
+    /**
+     * Der springende Punkt: SVS- und Kleinunternehmergrenze gelten je Person.
+     * Zaehlte ein fremd eingetippter Eintrag auf den Tipper, waeren beide
+     * Grenzen falsch — und zwar bei beiden Personen zugleich.
+     */
+    @Test
+    void derUmsatzZaehltDemEigentuemerNichtDemErsteller() {
+        UUID simeon = UUID.randomUUID();
+        UUID hanxi = UUID.randomUUID();
+
+        FinanceEntry e = income(simeon, "simeon", "1200.00", "20", YEAR);
+        e.setOwnerId(hanxi);
+        e.setOwnerUsername("hanxi");
+        givenEntries(e);
+
+        var rows = perUser(service.stats(YEAR));
+
+        assertThat(rows).singleElement()
+                .satisfies(r -> assertThat(r.get("username")).isEqualTo("hanxi"));
+    }
+
+    /** Ohne ausdruecklichen Eigentuemer bleibt es beim bisherigen Verhalten. */
+    @Test
+    void altbestandZaehltWeiterhinAufDenErsteller() {
+        UUID simeon = UUID.randomUUID();
+        givenEntries(income(simeon, "simeon", "1200.00", "20", YEAR));
+
+        var rows = perUser(service.stats(YEAR));
+
+        assertThat(rows).singleElement()
+                .satisfies(r -> assertThat(r.get("username")).isEqualTo("simeon"));
+    }
+
     // ── Ausgaben und Vorsteuer ────────────────────────────────────────
 
     @Test

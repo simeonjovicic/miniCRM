@@ -60,7 +60,6 @@ export interface TodoItem {
    */
   position?: number | null;
   dueDate: string | null;
-  notes: string | null;
   /** Verknüpfter Kunde, gesetzt über die @-Erwähnung im Titel */
   customerId?: string;
   customerName?: string;
@@ -181,6 +180,14 @@ export interface FinanceEntry {
   attachmentName?: string;
   description: string;
   date: string;
+  /**
+   * Auf wessen Bücher der Eintrag zählt — im Unterschied zu createdBy, wer ihn
+   * eingetippt hat. Nicht gesetzt heisst Altbestand: dann gilt weiterhin der
+   * Ersteller. Die Zurechnung entscheidet über Umsatz, Gewinn und damit die
+   * SVS- und Kleinunternehmergrenze, die je Person gelten.
+   */
+  ownerId?: string;
+  ownerUsername?: string;
   createdBy: string;
   createdByUsername: string | null;
   createdAt: string;

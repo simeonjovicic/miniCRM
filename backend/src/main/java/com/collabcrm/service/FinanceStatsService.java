@@ -151,7 +151,7 @@ public class FinanceStatsService {
      * Beleg ohne USt-Ausweis), sind die vollen Bruttokosten Aufwand.
      */
     private void applyExpense(Map<UUID, Totals> byUser, FinanceEntry entry, Internal internal) {
-        Totals t = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
+        Totals t = totalsFor(byUser, entry.ownerId(), entry.ownerName());
         boolean deductible = Boolean.TRUE.equals(entry.getVatDeductible());
 
         BigDecimal cost = deductible ? net(entry) : gross(entry);
@@ -177,7 +177,7 @@ public class FinanceStatsService {
                              Internal internal) {
         if (entry.isLinkedDeposit()) return;
 
-        Totals creator = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
+        Totals creator = totalsFor(byUser, entry.ownerId(), entry.ownerName());
 
         // Die USt schuldet immer nur der Rechnungssteller, unabhängig von der Aufteilung.
         creator.vatOwed = creator.vatOwed.add(vat(entry));
@@ -219,7 +219,7 @@ public class FinanceStatsService {
         BigDecimal open = gross(entry).subtract(paid);
         if (open.signum() <= 0) return;
 
-        Totals t = totalsFor(byUser, entry.getCreatedBy(), entry.getCreatedByUsername());
+        Totals t = totalsFor(byUser, entry.ownerId(), entry.ownerName());
         t.openReceivables = t.openReceivables.add(open);
         if (isInternalShare(entry)) {
             internal.open = internal.open.add(open);
@@ -229,7 +229,7 @@ public class FinanceStatsService {
         row.put("id", entry.getId().toString());
         row.put("description", entry.getDescription());
         row.put("date", entry.getDate().toString());
-        row.put("username", entry.getCreatedByUsername());
+        row.put("username", entry.ownerName());
         row.put("gross", gross(entry));
         row.put("paid", paid);
         row.put("open", open);
@@ -272,7 +272,7 @@ public class FinanceStatsService {
             row.put("id", entry.getId().toString());
             row.put("description", entry.getDescription());
             row.put("date", entry.getDate().toString());
-            row.put("username", entry.getCreatedByUsername());
+            row.put("username", entry.ownerName());
             row.put("customerName", entry.getCustomerName());
             row.put("gross", gross(entry));
             row.put("paid", paid);

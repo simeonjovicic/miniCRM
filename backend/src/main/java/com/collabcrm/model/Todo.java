@@ -56,9 +56,6 @@ public class Todo extends AbstractPersistable<UUID> {
     /** Optionales Fälligkeitsdatum */
     private LocalDate dueDate;
 
-    /** Optionale Notizen zum Todo (unbegrenzte Länge dank TEXT-Typ) */
-    @Column(columnDefinition = "TEXT")
-    private String notes;
 
     /**
      * Wiederholung: NONE, DAILY, WEEKLY, MONTHLY, QUARTERLY oder YEARLY.
@@ -144,9 +141,6 @@ public class Todo extends AbstractPersistable<UUID> {
 
     public LocalDate getDueDate() { return dueDate; }
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
-
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
 
     public String getRecurrence() { return recurrence; }
     public void setRecurrence(String recurrence) { this.recurrence = recurrence; }

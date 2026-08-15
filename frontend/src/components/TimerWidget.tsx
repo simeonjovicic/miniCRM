@@ -32,9 +32,16 @@ export default function TimerWidget() {
   const [tick, setTick] = useState(0);
 
   const reloadOthersActive = useCallback(() => {
-    timeEntriesApi.listActive().then((entries) => {
-      setOthersActive(entries.filter((e) => e.userId !== currentUserId));
-    });
+    timeEntriesApi
+      .listActive()
+      .then((entries) => {
+        setOthersActive(entries.filter((e) => e.userId !== currentUserId));
+      })
+      // Bewusst still: das hier laedt bei jeder WebSocket-Nachricht neu, eine
+      // Meldung pro Fehlschlag waere eine Lawine. Die Anzeige fremder Sitzungen
+      // ist Beiwerk — faellt sie aus, bleibt der eigene Timer bedienbar.
+      // Ohne diesen Zweig wurde daraus eine unbehandelte Rejection.
+      .catch(() => setOthersActive([]));
   }, [currentUserId]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { todosApi, customersApi, usersApi } from "../services/api";
 import { subscribe } from "../services/websocket";
@@ -10,6 +10,9 @@ import { RECURRENCE_LABELS } from "../types";
 import { moveAfter, moveBefore, moveDown, moveUp } from "../utils/reorder";
 import type { User, TodoItem, TodoComment, TodoRecurrence, Customer } from "../types";
 
+
+/** Die Vorgabe ueberlebt das Neuladen, deshalb im localStorage. */
+const DEFAULT_ASSIGNEE_KEY = "minicrm:defaultAssignee";
 
 export default function TodosPage({ user }: { user: User }) {
   const { show } = useToast();
@@ -27,6 +30,22 @@ export default function TodosPage({ user }: { user: User }) {
   /** Kunde, der für das neue Todo per @ ausgewählt wurde */
   const [newCustomer, setNewCustomer] = useState<{ id: string; name: string } | null>(null);
   const [tab, setTab] = useState<"TODOS" | "TERMINE">("TODOS");
+  /**
+   * Wem neu Aufgeschriebenes automatisch zufaellt.
+   *
+   * Pro Person und Geraet gemerkt, nicht am Server: es ist eine
+   * Arbeitsgewohnheit ("gerade mache ich alles"), keine Eigenschaft der Daten —
+   * und sie soll nicht beim anderen mitumschalten.
+   */
+  const [defaultAssignee, setDefaultAssignee] = useState<string>(
+    () => localStorage.getItem(DEFAULT_ASSIGNEE_KEY) ?? "",
+  );
+
+  function chooseDefaultAssignee(id: string) {
+    setDefaultAssignee(id);
+    if (id) localStorage.setItem(DEFAULT_ASSIGNEE_KEY, id);
+    else localStorage.removeItem(DEFAULT_ASSIGNEE_KEY);
+  }
 
   function reload() {
     todosApi
@@ -76,48 +95,83 @@ export default function TodosPage({ user }: { user: User }) {
     };
   }, []);
 
+  /**
+   * Führt eine Änderung aus und sagt Bescheid, wenn sie nicht durchkommt.
+   *
+   * Ohne das schlug ein fehlgeschlagener Aufruf nur als unbehandelte Rejection
+   * in der Konsole auf: in der Oberfläche passierte nichts, und man hielt das
+   * Todo für gespeichert. Danach wird neu geladen, damit die Liste nicht einen
+   * Stand zeigt, den der Server nicht hat.
+   *
+   * @param was benennt die Handlung in der Fehlermeldung, z. B. "Speichern"
+   */
+  async function versuche(was: string, aktion: () => Promise<void>) {
+    try {
+      await aktion();
+    } catch (err) {
+      show(`${was} fehlgeschlagen: ${(err as Error).message}`, "warning");
+      reload();
+    }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
-    const created = await todosApi.create({
-      title: input.trim(),
-      done: false,
-      customerId: newCustomer?.id,
-      customerName: newCustomer?.name,
-      createdBy: user.id,
-      createdByUsername: user.username,
+    await versuche("Anlegen", async () => {
+      const vorgabe = members.find((m) => m.id === defaultAssignee);
+      const created = await todosApi.create({
+        title: input.trim(),
+        done: false,
+        assigneeId: vorgabe?.id,
+        assigneeUsername: vorgabe?.username,
+        customerId: newCustomer?.id,
+        customerName: newCustomer?.name,
+        createdBy: user.id,
+        createdByUsername: user.username,
+      });
+      setTodos((prev) => [created, ...prev]);
+      setInput("");
+      setNewCustomer(null);
     });
-    setTodos((prev) => [created, ...prev]);
-    setInput("");
-    setNewCustomer(null);
   }
 
   async function handleToggleDone(todo: TodoItem) {
-    const updated = await todosApi.update(todo.id, { ...todo, done: !todo.done });
-    setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
+    await versuche("Abhaken", async () => {
+      const updated = await todosApi.update(todo.id, { ...todo, done: !todo.done });
+      setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
+    });
   }
 
   /**
    * Der Server ersetzt das Todo vollständig, deshalb wird der bestehende Stand
    * mitgeschickt. Nur die Änderung zu senden würde Fälligkeit, Notizen und die
    * Kundenverknüpfung löschen.
+   *
+   * @return true, wenn gespeichert wurde
    */
   async function handleUpdate(id: string, changes: Partial<TodoItem>) {
     const current = todos.find((t) => t.id === id);
-    if (!current) return;
-    const updated = await todosApi.update(id, { ...current, ...changes });
-    setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    if (!current) return false;
+
+    let ok = false;
+    await versuche("Speichern", async () => {
+      const updated = await todosApi.update(id, { ...current, ...changes });
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      ok = true;
+    });
+    return ok;
   }
 
   /**
    * Warten an- und abschalten, mit Ansage.
    *
    * Die Zeile springt dabei in einen anderen Abschnitt — ohne Hinweis sieht das
-   * aus, als wäre sie verschwunden.
+   * aus, als wäre sie verschwunden. Die Ansage kommt nur, wenn es geklappt hat:
+   * sonst stünde da "wartet jetzt", während die Zeile unverändert oben bleibt.
    */
   async function handleToggleWaiting(todo: TodoItem) {
     const nowWaiting = !todo.waiting;
-    await handleUpdate(todo.id, { waiting: nowWaiting });
+    if (!(await handleUpdate(todo.id, { waiting: nowWaiting }))) return;
     show(
       nowWaiting
         ? `„${todo.title}" wartet jetzt auf den Kunden — steht unten im eigenen Abschnitt`
@@ -127,9 +181,11 @@ export default function TodosPage({ user }: { user: User }) {
   }
 
   async function handleDelete(id: string) {
-    await todosApi.delete(id);
-    setTodos((prev) => prev.filter((t) => t.id !== id));
-    if (expandedId === id) setExpandedId(null);
+    await versuche("Löschen", async () => {
+      await todosApi.delete(id);
+      setTodos((prev) => prev.filter((t) => t.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    });
   }
 
   /**
@@ -281,6 +337,30 @@ export default function TodosPage({ user }: { user: User }) {
                 </button>
               ))}
             </div>
+          )}
+
+          {/*
+            Wem neu Aufgeschriebenes zufaellt. Spart bei laengeren Phasen, in
+            denen ohnehin einer alles uebernimmt, das Zuweisen bei jedem Todo.
+          */}
+          {members.length > 1 && (
+            <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <span className="text-border">|</span>
+              Neue an
+              <select
+                value={defaultAssignee}
+                onChange={(e) => chooseDefaultAssignee(e.target.value)}
+                aria-label="Neue Todos zuweisen an"
+                className="glass-input rounded-full px-2 py-1 text-xs text-text-bright"
+              >
+                <option value="">niemanden</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id === user.id ? `${m.username} (mich)` : m.username}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
 
@@ -671,7 +751,6 @@ function TodoDetail({
   const isOwner = todo.createdBy === user.id;
   const [title, setTitle] = useState(todo.title);
   const [dueDate, setDueDate] = useState(todo.dueDate ?? "");
-  const [notes, setNotes] = useState(todo.notes ?? "");
   const [recurrence, setRecurrence] = useState<TodoRecurrence>(todo.recurrence ?? "NONE");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -759,18 +838,6 @@ function TodoDetail({
             </p>
           )}
         </div>
-        <div className="col-span-2">
-          <label className="mb-1 block text-xs font-medium text-text-secondary">Notizen</label>
-          <textarea
-            value={notes}
-            onChange={(e) => {
-              setNotes(e.target.value);
-              save({ notes: e.target.value });
-            }}
-            rows={2}
-            className="glass-input w-full resize-none rounded-lg px-3 py-2 text-sm text-text-bright outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-          />
-        </div>
       </div>
       <TodoComments todoId={todo.id} user={user} />
 
@@ -801,17 +868,30 @@ function TodoComments({ todoId, user }: { todoId: string; user: User }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * Kommentare laden — und danach bei jeder Aenderung von aussen erneut.
+   *
+   * Ohne das Mitlauschen sah man die Antwort des anderen erst nach dem Zu- und
+   * Wiederaufklappen. Genau das Warten, das der Chat vorher nicht hatte.
+   */
+  const laden = useCallback(
+    (mitLadeanzeige: boolean) => {
+      if (mitLadeanzeige) setLoading(true);
+      return todosApi
+        .comments(todoId)
+        .then(setComments)
+        // Still: das laeuft auch als Hintergrundabgleich, eine Meldung pro
+        // fehlgeschlagenem Nachziehen waere Laerm. Der bisherige Stand bleibt.
+        .catch(() => undefined)
+        .finally(() => mitLadeanzeige && setLoading(false));
+    },
+    [todoId],
+  );
+
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    todosApi
-      .comments(todoId)
-      .then((c) => active && setComments(c))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [todoId]);
+    void laden(true);
+    return subscribe("/topic/todos", () => void laden(false));
+  }, [laden]);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();

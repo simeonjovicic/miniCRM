@@ -103,6 +103,12 @@ function emptyForm(type: FinanceType = "INCOME") {
      */
     shareWithPartner: true,
     sharedWithUserId: "",
+    /**
+     * Wem der Eintrag zuzurechnen ist — im Unterschied dazu, wer ihn eintippt.
+     * Leer heisst "ich selbst"; die Personen sind beim Anlegen des Formulars
+     * noch nicht geladen.
+     */
+    ownerId: "",
     customerId: "",
     customerName: "",
     attachmentPath: "",
@@ -135,6 +141,14 @@ export default function FinancePage({ user }: { user: User }) {
 
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
+  /**
+   * Ob das Eingabefenster offen ist.
+   *
+   * Vorher stand das Formular dauerhaft zwischen Kennzahlen und Liste. Beim
+   * Bearbeiten sah man deshalb nicht, dass ueberhaupt etwas passiert war — es
+   * aenderten sich nur Werte in einem Kasten, den man ohnehin ignorierte.
+   */
+  const [formOpen, setFormOpen] = useState(false);
 
   const formRef = useRef<HTMLDivElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -191,7 +205,18 @@ export default function FinancePage({ user }: { user: User }) {
   }, [editingId]);
 
   /** Die anderen Personen — bei zwei Leuten genau eine. */
-  const partners = useMemo(() => users.filter((u) => u.id !== user.id), [users, user.id]);
+  /** Wem der Eintrag gehoert — ohne Auswahl man selbst. */
+  const ownerId = form.ownerId || user.id;
+
+  /**
+   * Mit wem geteilt werden kann: alle ausser dem Eigentuemer.
+   *
+   * Bezugspunkt ist der Eigentuemer, nicht die angemeldete Person. Erfasst
+   * Simeon eine Rechnung, die Hanxiang gehoert, war hier vorher "teilen mit
+   * Hanxiang" angeboten — also mit sich selbst, was der Server zu Recht
+   * ablehnt. Angeboten wird jetzt die jeweils andere Seite.
+   */
+  const partners = useMemo(() => users.filter((u) => u.id !== ownerId), [users, ownerId]);
 
   /** Der gerade bearbeitete Eintrag, wenn er Teil einer geteilten Buchung ist. */
   const editingHalf = useMemo(() => {
@@ -240,7 +265,9 @@ export default function FinancePage({ user }: { user: User }) {
   }, [form.shareWithPartner, form.sharedWithUserId, form.vatRate, preview, partners]);
 
   const visibleEntries = useMemo(
-    () => (personFilter ? entries.filter((e) => e.createdBy === personFilter) : entries),
+    // Gefiltert wird nach Eigentuemer, nicht nach Tipper — sonst landete ein
+    // fuer den anderen erfasster Eintrag in den falschen Buechern.
+    () => (personFilter ? entries.filter((e) => (e.ownerId ?? e.createdBy) === personFilter) : entries),
     [entries, personFilter],
   );
 
@@ -297,6 +324,7 @@ export default function FinancePage({ user }: { user: User }) {
 
   function buildPayload(): Partial<FinanceEntry> {
     const partner = selectedPartner();
+    const owner = users.find((u) => u.id === form.ownerId) ?? user;
     const isDeposit = form.status === "DEPOSIT";
     return {
       amount: parseFloat(form.amount),
@@ -318,6 +346,10 @@ export default function FinancePage({ user }: { user: User }) {
       // entfällt sie, sonst würde nochmal halbiert.
       sharedWithUserId: editingHalf ? undefined : partner?.id,
       sharedWithUsername: editingHalf ? undefined : partner?.username,
+      // Wem es gehoert, im Unterschied dazu wer es eintippt. Ohne Auswahl
+      // bleibt es bei einem selbst.
+      ownerId: owner.id,
+      ownerUsername: owner.username,
       createdBy: user.id,
       createdByUsername: user.username,
     };
@@ -355,9 +387,13 @@ export default function FinancePage({ user }: { user: User }) {
 
   function startEdit(entry: FinanceEntry) {
     setEditingId(entry.id);
+    setFormOpen(true);
     setError(null);
     setForm({
       type: entry.type,
+      // Altbestand hat keinen Eigentuemer — dort gilt weiterhin der Ersteller,
+      // und genau der steht dann auch zur Bearbeitung im Feld.
+      ownerId: entry.ownerId ?? entry.createdBy,
       // Im Formular steht der Betrag so, wie er ursprünglich eingetippt wurde.
       amount: String(entry.inputMode === "NET" ? entry.netAmount : entry.amount),
       inputMode: entry.inputMode,
@@ -380,8 +416,17 @@ export default function FinancePage({ user }: { user: User }) {
 
   function cancelEdit() {
     setEditingId(null);
+    setFormOpen(false);
     setForm(emptyForm());
     setError(null);
+  }
+
+  /** Leeres Formular fuer einen neuen Eintrag oeffnen. */
+  function startNew() {
+    setEditingId(null);
+    setForm(emptyForm());
+    setError(null);
+    setFormOpen(true);
   }
 
   /** Statuswechsel direkt aus der Liste, ohne Umweg über das Formular. */
@@ -512,19 +557,34 @@ export default function FinancePage({ user }: { user: User }) {
         </>
       )}
 
+      {/* Der Knopf, der das Fenster oeffnet — an derselben Stelle, wo vorher
+          das Formular stand, damit man ihn dort sucht. */}
+      {!formOpen && (
+        <button
+          onClick={startNew}
+          className="btn-shimmer mb-6 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all active:scale-[0.98]"
+        >
+          <span className="text-base leading-none">+</span>
+          Eintrag hinzufügen
+        </button>
+      )}
+
+      {formOpen && (
+      <>
+      <div className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm" onClick={cancelEdit} />
       <div
         ref={formRef}
-        className={`glass mb-6 rounded-2xl p-4 sm:p-5 ${editingId ? "ring-2 ring-accent/40" : ""}`}
+        role="dialog"
+        aria-label={editingId ? "Eintrag bearbeiten" : "Neuer Eintrag"}
+        className="glass-strong fixed left-1/2 top-1/2 z-[71] max-h-[90svh] w-[min(760px,94vw)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-4 sm:p-5"
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text-bright">
             {editingId ? "Eintrag bearbeiten" : "Neuer Eintrag"}
           </h2>
-          {editingId && (
-            <button onClick={cancelEdit} className="text-xs text-text-secondary hover:text-text-bright">
-              Abbrechen
-            </button>
-          )}
+          <button onClick={cancelEdit} className="text-xs text-text-secondary hover:text-text-bright">
+            Schließen
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -651,6 +711,34 @@ export default function FinancePage({ user }: { user: User }) {
               </>
             )}
           </div>
+
+          {/*
+            Wem der Eintrag gehört — nicht, wer ihn eintippt.
+            Arbeitet man am Rechner des anderen oder erfasst nachträglich seine
+            Rechnung, zählte sie sonst auf die eigenen Bücher und verschöbe
+            SVS- und Kleinunternehmergrenze bei beiden.
+          */}
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-text-secondary">Gehört zu</span>
+            <select
+              value={form.ownerId || user.id}
+              onChange={(e) => patch({ ownerId: e.target.value })}
+              aria-label="Gehört zu"
+              disabled={!!editingHalf}
+              title={
+                editingHalf
+                  ? "Bei einer geteilten Buchung nicht änderbar — erst die Aufteilung auflösen"
+                  : undefined
+              }
+              className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-text-bright disabled:opacity-50"
+            >
+              {users.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id === user.id ? `${p.username} (ich)` : p.username}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {/* Zeile 3: Datum, Status, je nach Art unterschiedliche Zusatzfelder */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -851,6 +939,8 @@ export default function FinancePage({ user }: { user: User }) {
           </button>
         </form>
       </div>
+      </>
+      )}
 
       <EntryList
         entries={visibleEntries}
@@ -1509,7 +1599,7 @@ function childLabel(entry: FinanceEntry, head: FinanceEntry): string {
  * dagegen ist genau die Information, die man sucht.
  */
 function childMeta(entry: FinanceEntry, head: FinanceEntry): string {
-  const parts = [entry.createdByUsername, `netto ${formatCurrency(entry.netAmount)}`];
+  const parts = [entry.ownerUsername ?? entry.createdByUsername, `netto ${formatCurrency(entry.netAmount)}`];
   if (entry.date !== head.date) parts.push(new Date(entry.date).toLocaleDateString("de-DE"));
   return parts.filter(Boolean).join(" · ");
 }
@@ -1754,7 +1844,7 @@ function EntryList({
                           <StatusBadge entry={entry} editable={canEdit(entry)} onChange={onStatusChange} />
                         </td>
                         <td className="px-4 py-3.5 text-xs text-text-secondary">
-                          {entry.createdByUsername ?? "—"}
+                          {entry.ownerUsername ?? entry.createdByUsername ?? "—"}
                         </td>
                         <td className="px-4 py-3.5 text-right font-mono text-xs text-text-secondary">
                           {formatCurrency(entry.netAmount)}

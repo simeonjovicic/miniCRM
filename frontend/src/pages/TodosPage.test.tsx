@@ -5,8 +5,16 @@ import { renderWithRouter, mockFetch } from "../test/helpers";
 import { testUser, testUser2, testCustomer } from "../test/fixtures";
 import type { TodoItem, TodoComment } from "../types";
 
+/** Merkt sich die Handler, damit Tests eine Aenderung von aussen ausloesen koennen. */
+const websocketHandlers: Record<string, Array<() => void>> = {};
+
 vi.mock("../services/websocket", () => ({
-  subscribe: () => () => {},
+  subscribe: (topic: string, fn: () => void) => {
+    (websocketHandlers[topic] ??= []).push(fn);
+    return () => {
+      websocketHandlers[topic] = (websocketHandlers[topic] ?? []).filter((f) => f !== fn);
+    };
+  },
   sendOperation: () => {},
   connect: () => {},
   isConnected: () => true,
@@ -19,7 +27,6 @@ const todo: TodoItem = {
   title: "Angebot rausschicken",
   done: false,
   dueDate: null,
-  notes: null,
   commentCount: 0,
   createdBy: testUser.id,
   createdByUsername: testUser.username,
@@ -53,7 +60,12 @@ function mockTodos(overrides: Record<string, unknown> = {}) {
 describe("TodosPage", () => {
   let restore: () => void;
 
-  afterEach(() => restore?.());
+  afterEach(() => {
+    restore?.();
+    // Die Vorgabe fuer die Zustaendigkeit ueberlebt absichtlich das Neuladen —
+    // zwischen zwei Tests darf sie das aber nicht.
+    localStorage.clear();
+  });
 
   // ── Kundenverknüpfung per @ ─────────────────────────────────────
 
@@ -550,6 +562,64 @@ describe("TodosPage", () => {
     expect(screen.queryByRole("button", { name: /nach oben/ })).not.toBeInTheDocument();
   });
 
+  // ── Fehlgeschlagene Änderungen ──────────────────────────────────
+
+  /**
+   * Vorher lief ein fehlgeschlagener Aufruf als unbehandelte Rejection ins
+   * Leere: in der Oberfläche passierte nichts, und man hielt das Todo für
+   * gespeichert. Jetzt wird der Serverstand nachgeladen, damit die Liste nicht
+   * etwas zeigt, das nirgends steht.
+   */
+  it("holt den Serverstand, wenn eine Änderung nicht durchkommt", async () => {
+    const base = mockTodos();
+    const passthrough = globalThis.fetch;
+    restore = base.restore;
+
+    let gets = 0;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.includes("/todos/t-1")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "Serverfehler" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      if (!init?.method && url.includes("/todos") && !url.includes("comments")) gets++;
+      return passthrough(input, init);
+    }) as unknown as typeof fetch;
+
+    renderWithRouter(<TodosPage user={testUser} />);
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    const vorher = gets;
+
+    await userEvent.click(screen.getByRole("button", { name: /warten lassen/ }));
+
+    await waitFor(() => expect(gets).toBeGreaterThan(vorher));
+  });
+
+  /** Die Zeile darf nicht als "wartet" erscheinen, wenn das Speichern scheiterte. */
+  it("stellt bei einem Fehlschlag nicht auf wartet um", async () => {
+    const base = mockTodos();
+    const passthrough = globalThis.fetch;
+    restore = base.restore;
+
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        return Promise.resolve(new Response(null, { status: 500 }));
+      }
+      return passthrough(input, init);
+    }) as unknown as typeof fetch;
+
+    renderWithRouter(<TodosPage user={testUser} />);
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /warten lassen/ }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Wartet auf Kunden" })).not.toBeInTheDocument(),
+    );
+  });
+
   // ── Update-Semantik ─────────────────────────────────────────────
 
   /**
@@ -560,7 +630,6 @@ describe("TodosPage", () => {
     const vollstaendig: TodoItem = {
       ...todo,
       dueDate: "2026-08-20",
-      notes: "Zahlen abwarten",
       customerId: testCustomer.id,
       customerName: testCustomer.name,
     };
@@ -592,8 +661,77 @@ describe("TodosPage", () => {
     expect(puts[0]).toMatchObject({
       waiting: true,
       dueDate: "2026-08-20",
-      notes: "Zahlen abwarten",
       customerId: testCustomer.id,
+    });
+  });
+
+  // ── Notizen abgeloest, Kommentare live ──────────────────────────
+
+  /** Kommentare leisten dasselbe, nur mit Verfasser und Zeitpunkt. */
+  it("bietet kein Notizfeld mehr an", async () => {
+    ({ restore } = mockTodos());
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+
+    await screen.findByDisplayValue("Angebot rausschicken");
+    expect(screen.queryByText("Notizen")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Vorher sah man die Antwort des anderen erst nach dem Zu- und
+   * Wiederaufklappen — genau das Warten, das der Chat nicht hatte.
+   */
+  it("zieht Kommentare nach, wenn der andere schreibt", async () => {
+    const m = mockTodos({ "/todos/t-1/comments": [comment] });
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByText("Angebot rausschicken")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Angebot rausschicken"));
+
+    await screen.findByText("hab die Zahlen geschickt");
+    const vorher = m.mock.mock.calls.filter(([u]) => String(u).includes("/comments")).length;
+
+    // So meldet der Server eine Aenderung von aussen
+    websocketHandlers["/topic/todos"]?.forEach((fn) => fn());
+
+    await waitFor(() => {
+      const nachher = m.mock.mock.calls.filter(([u]) => String(u).includes("/comments")).length;
+      expect(nachher).toBeGreaterThan(vorher);
+    });
+  });
+
+  // ── Vorgabe fuer Zustaendigkeit ─────────────────────────────────
+
+  it("weist neue Todos der eingestellten Person zu", async () => {
+    const m = mockTodos();
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByLabelText("Neues Todo")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Neue Todos zuweisen an"), testUser2.id);
+    await userEvent.type(screen.getByLabelText("Neues Todo"), "Frisch aufgeschrieben{Enter}");
+
+    await waitFor(() => {
+      const post = m.mock.mock.calls.find(([, init]) => init?.method === "POST");
+      const body = JSON.parse(post![1]!.body as string);
+      expect(body.assigneeId).toBe(testUser2.id);
+    });
+  });
+
+  it("laesst ohne Vorgabe unzugewiesen", async () => {
+    const m = mockTodos();
+    restore = m.restore;
+    renderWithRouter(<TodosPage user={testUser} />);
+
+    await waitFor(() => expect(screen.getByLabelText("Neues Todo")).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText("Neues Todo"), "Ohne Vorgabe{Enter}");
+
+    await waitFor(() => {
+      const post = m.mock.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(JSON.parse(post![1]!.body as string).assigneeId).toBeUndefined();
     });
   });
 });

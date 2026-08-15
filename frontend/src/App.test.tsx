@@ -26,6 +26,9 @@ describe("App — Sitzung", () => {
   it("stellt eine bestehende Sitzung wieder her", async () => {
     ({ restore } = mockFetch({
       "/auth/me": testUser,
+      // Das Timer-Widget im Rahmen fragt das beim Einhaengen ab — ohne Mock
+      // geht ein echter fetch mit relativer URL raus und scheitert.
+      "/time-entries/active": [],
       "/dashboard/stats": {
         year: 2026,
         openTodos: [],
@@ -86,6 +89,9 @@ describe("App — Sitzung", () => {
     const base = mockFetch({
       "/auth/me": testUser,
       "/auth/users": [{ username: "admin", hasPassword: true }],
+      // Das Timer-Widget im Rahmen fragt das beim Einhaengen ab — ohne Mock
+      // geht ein echter fetch mit relativer URL raus und scheitert.
+      "/time-entries/active": [],
       "/dashboard/stats": {
         year: 2026,
         openTodos: [],
@@ -137,6 +143,9 @@ describe("App — Benachrichtigungen einrichten", () => {
     return mockFetch({
       "/auth/me": testUser,
       "/auth/ntfy-topic": { topic: "", configured: false },
+      // Das Timer-Widget im Rahmen fragt das beim Einhaengen ab — ohne Mock
+      // geht ein echter fetch mit relativer URL raus und scheitert.
+      "/time-entries/active": [],
       "/dashboard/stats": {
         year: 2026,
         openTodos: [],

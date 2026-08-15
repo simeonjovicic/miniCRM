@@ -146,6 +146,26 @@ public class FinanceEntry extends AbstractPersistable<UUID> {
     /** Username für Anzeige ohne zusätzliche DB-Abfrage */
     private String createdByUsername;
 
+    /**
+     * Auf wessen Bücher der Eintrag zählt — im Unterschied zu {@link #createdBy},
+     * wer ihn eingetippt hat.
+     *
+     * Vorher waren beide dasselbe, und das war falsch: tippt einer eine Rechnung
+     * ein, die dem anderen gehört, verschob das dessen Umsatz, USt, Gewinn und
+     * damit auch die SVS- und Kleinunternehmergrenze. Die Grenzen gelten je
+     * Person, ein Vertippen verfälscht also die Zahlen, nach denen man sich
+     * richtet — nicht bloss die Anzeige.
+     *
+     * null heisst Altbestand: dann gilt weiterhin {@code createdBy}, siehe
+     * {@link #ownerId()}. Bewusst ohne Wanderung der Bestandsdaten — der
+     * Eigentümer wird gesetzt, sobald jemand den Eintrag bearbeitet.
+     */
+    @Column
+    private UUID ownerId;
+
+    /** Anzeigename des Eigentümers, analog zu createdByUsername. */
+    private String ownerUsername;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -242,6 +262,26 @@ public class FinanceEntry extends AbstractPersistable<UUID> {
 
     public String getCreatedByUsername() { return createdByUsername; }
     public void setCreatedByUsername(String createdByUsername) { this.createdByUsername = createdByUsername; }
+
+    public UUID getOwnerId() { return ownerId; }
+    public void setOwnerId(UUID ownerId) { this.ownerId = ownerId; }
+
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
+
+    /**
+     * Wem der Eintrag zuzurechnen ist. Für Altbestand ohne gesetzten Eigentümer
+     * bleibt es beim Ersteller — so ändert sich an bestehenden Zahlen nichts,
+     * solange niemand den Eintrag anfasst.
+     */
+    public UUID ownerId() {
+        return ownerId != null ? ownerId : createdBy;
+    }
+
+    /** Anzeigename dazu, mit derselben Rückfallregel. */
+    public String ownerName() {
+        return ownerId != null ? ownerUsername : createdByUsername;
+    }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

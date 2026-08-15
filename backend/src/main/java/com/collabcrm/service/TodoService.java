@@ -166,7 +166,6 @@ public class TodoService {
 
         Todo successor = new Todo();
         successor.setTitle(todo.getTitle());
-        successor.setNotes(todo.getNotes());
         // Am selben Platz wie der Vorgänger — ein wiederkehrendes Todo soll
         // nicht jedes Mal woanders in der Liste auftauchen.
         successor.setPosition(todo.getPosition());
@@ -228,7 +227,7 @@ public class TodoService {
     /**
      * Ersetzt das Todo durch den gesendeten Stand.
      *
-     * ACHTUNG: done, dueDate, notes und die Kundenverknüpfung werden immer
+     * ACHTUNG: done, dueDate und die Kundenverknüpfung werden immer
      * übernommen — auch wenn sie leer sind, denn nur so lassen sie sich wieder
      * entfernen. Der Client muss deshalb das VOLLSTÄNDIGE Todo senden, nicht nur
      * das geänderte Feld, sonst gehen die übrigen Felder verloren.
@@ -242,7 +241,6 @@ public class TodoService {
         // Erledigtes wartet nicht mehr auf den Kunden.
         existing.setWaiting(updates.isDone() ? null : updates.getWaiting());
         existing.setDueDate(updates.getDueDate());
-        existing.setNotes(updates.getNotes());
         existing.setCustomerId(updates.getCustomerId());
         existing.setCustomerName(updates.getCustomerName());
         existing.setRecurrence(updates.getRecurrence());

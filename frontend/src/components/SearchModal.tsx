@@ -88,10 +88,10 @@ export default function SearchModal({
 
       // Search todos
       for (const t of dataRef.current.todos) {
-        if (
-          t.title.toLowerCase().includes(lower) ||
-          t.notes?.toLowerCase().includes(lower)
-        ) {
+        // Notizen gibt es nicht mehr, ihr Inhalt steckt jetzt in Kommentaren.
+        // Die bleiben hier aussen vor: sie kaemen erst ueber eine Abfrage pro
+        // Todo herein, und die Suche laeuft bei jedem Tastendruck.
+        if (t.title.toLowerCase().includes(lower)) {
           found.push({
             type: "todo",
             id: t.id,

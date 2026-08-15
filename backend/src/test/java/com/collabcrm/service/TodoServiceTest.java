@@ -110,7 +110,7 @@ class TodoServiceTest {
 
     /**
      * Der Server ersetzt das Todo vollständig. Das ist Absicht, damit sich
-     * Fälligkeit, Notizen und Kundenverknüpfung wieder entfernen lassen — der
+     * Fälligkeit und Kundenverknüpfung wieder entfernen lassen — der
      * Client muss deshalb immer das ganze Todo senden.
      */
     @Test
@@ -119,14 +119,12 @@ class TodoServiceTest {
         UUID kunde = UUID.randomUUID();
         Todo existing = todo("Angebot");
         existing.setDueDate(LocalDate.of(2026, 8, 20));
-        existing.setNotes("Zahlen von bob abwarten");
         existing.setCustomerId(kunde);
         existing.setCustomerName("Acme Corp");
         existing.setDone(false);
 
         Todo update = todo("Angebot");
         update.setDueDate(existing.getDueDate());
-        update.setNotes(existing.getNotes());
         update.setCustomerId(kunde);
         update.setCustomerName("Acme Corp");
         update.setDone(true);
@@ -138,7 +136,6 @@ class TodoServiceTest {
 
         assertThat(result.isDone()).isTrue();
         assertThat(result.getDueDate()).isEqualTo(LocalDate.of(2026, 8, 20));
-        assertThat(result.getNotes()).isEqualTo("Zahlen von bob abwarten");
         assertThat(result.getCustomerId()).isEqualTo(kunde);
     }
 

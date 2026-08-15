@@ -207,7 +207,7 @@ class FinanceServiceTest {
 
         assertThatThrownBy(() -> service.create(entry))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("mit dem Ersteller selbst");
+                .hasMessageContaining("mit sich selbst");
     }
 
     // ── Aufteilung in zwei Buchungen ──────────────────────────────────
@@ -358,6 +358,97 @@ class FinanceServiceTest {
 
         assertThat(saved).hasSize(1);
         assertThat(saved.getFirst().getSplitGroupId()).isNull();
+    }
+
+    // ── Wem der Eintrag gehoert ───────────────────────────────────────
+
+    /**
+     * Der Kern: wer tippt, ist nicht wer es zu versteuern hat. Ohne diese
+     * Trennung verschob ein fremd eingetippter Eintrag Umsatz, Gewinn und damit
+     * die SVS- und Kleinunternehmergrenze der falschen Person.
+     */
+    @Test
+    void derEintragLaesstSichEinerAnderenPersonZuschreiben() {
+        UUID id = UUID.randomUUID();
+        UUID simeon = UUID.randomUUID();
+        UUID hanxi = UUID.randomUUID();
+
+        FinanceEntry entry = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        entry.setCreatedBy(simeon);
+        entry.setCreatedByUsername("simeon");
+        when(repository.findById(id)).thenReturn(Optional.of(entry));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        FinanceEntry aenderung = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        aenderung.setOwnerId(hanxi);
+        aenderung.setOwnerUsername("hanxi");
+
+        FinanceEntry result = service.update(id, aenderung);
+
+        assertThat(result.ownerId()).isEqualTo(hanxi);
+        assertThat(result.ownerName()).isEqualTo("hanxi");
+        assertThat(result.getCreatedBy())
+                .as("wer es eingetippt hat, bleibt als Protokoll erhalten")
+                .isEqualTo(simeon);
+    }
+
+    /** Altbestand ohne ausdruecklichen Eigentuemer zaehlt weiter auf den Ersteller. */
+    @Test
+    void ohneAngabeGiltWeiterhinDerErsteller() {
+        UUID simeon = UUID.randomUUID();
+        FinanceEntry entry = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        entry.setCreatedBy(simeon);
+        entry.setCreatedByUsername("simeon");
+
+        assertThat(entry.ownerId()).isEqualTo(simeon);
+        assertThat(entry.ownerName()).isEqualTo("simeon");
+    }
+
+    /**
+     * Ein Statuswechsel oder eine Betragskorrektur darf die Zurechnung nicht
+     * anfassen — sonst schriebe jede Bearbeitung den Eintrag still um.
+     */
+    @Test
+    void einUpdateOhneAngabeLaesstDenEigentuemerInRuhe() {
+        UUID id = UUID.randomUUID();
+        UUID simeon = UUID.randomUUID();
+        UUID hanxi = UUID.randomUUID();
+
+        FinanceEntry entry = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        entry.setCreatedBy(simeon);
+        entry.setOwnerId(hanxi);
+        entry.setOwnerUsername("hanxi");
+        when(repository.findById(id)).thenReturn(Optional.of(entry));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        FinanceEntry aenderung = income("1500.00", "20", VatCalculator.MODE_GROSS);
+
+        assertThat(service.update(id, aenderung).ownerId()).isEqualTo(hanxi);
+    }
+
+    /**
+     * Zu zweit gibt es als neuen Eigentuemer nur den Partner — die Aufteilung
+     * fiele damit in sich zusammen und jemand rechnete mit sich selbst ab.
+     */
+    @Test
+    void eineGeteilteBuchungLaesstSichNichtUmschreiben() {
+        UUID id = UUID.randomUUID();
+        UUID simeon = UUID.randomUUID();
+        UUID hanxi = UUID.randomUUID();
+
+        FinanceEntry entry = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        entry.setCreatedBy(simeon);
+        entry.setSplitGroupId(UUID.randomUUID());
+        entry.setSplitRole("ORIGIN");
+        when(repository.findById(id)).thenReturn(Optional.of(entry));
+
+        FinanceEntry aenderung = income("1200.00", "20", VatCalculator.MODE_GROSS);
+        aenderung.setOwnerId(hanxi);
+        aenderung.setOwnerUsername("hanxi");
+
+        assertThatThrownBy(() -> service.update(id, aenderung))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Aufteilung aufloesen");
     }
 
     // ── Status direkt umschalten ──────────────────────────────────────

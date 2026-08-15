@@ -134,6 +134,15 @@ async function ohneAufteilung() {
   await userEvent.click(screen.getByRole("checkbox", { name: /50\/50 geteilt mit/ }));
 }
 
+/**
+ * Das Eingabeformular steckt hinter dem Plus-Knopf und ist nicht mehr dauerhaft
+ * sichtbar. Tests, die etwas eintragen, muessen es also erst oeffnen.
+ */
+async function formularOeffnen() {
+  await userEvent.click(await screen.findByRole("button", { name: /Eintrag hinzufügen/ }));
+  await screen.findByLabelText("Betrag");
+}
+
 describe("FinancePage", () => {
   let restore: () => void;
 
@@ -275,7 +284,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.click(screen.getByRole("button", { name: /Einstellungen/ }));
 
     expect(
@@ -412,7 +421,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Betrag"), "120");
 
     // 120 brutto bei 20 % → 100 netto + 20 USt
@@ -424,7 +433,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await ohneAufteilung();
     await userEvent.type(screen.getByLabelText("Betrag"), "100");
     await userEvent.click(screen.getByRole("button", { name: "Netto" }));
@@ -438,7 +447,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await ohneAufteilung();
     await userEvent.type(screen.getByLabelText("Betrag"), "250");
     await userEvent.selectOptions(screen.getByLabelText("USt-Satz"), "0");
@@ -453,7 +462,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+    await formularOeffnen();
 
     const options = within(screen.getByLabelText("Status")).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["Offen", "Bezahlt", "Anzahlung"]);
@@ -463,7 +472,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Art")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
 
     const options = within(screen.getByLabelText("Status")).getAllByRole("option");
@@ -473,6 +482,8 @@ describe("FinancePage", () => {
   it("hat den 50/50-Haken von vornherein gesetzt", async () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
+
+    await formularOeffnen();
 
     // Zu zweit ist Teilen der Normalfall
     const haken = await screen.findByRole("checkbox", { name: /50\/50 geteilt mit/ });
@@ -506,7 +517,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Art")).toBeInTheDocument());
+    await formularOeffnen();
     expect(screen.getByText(/50\/50 geteilt mit/)).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
@@ -520,7 +531,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Art")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
     await userEvent.type(screen.getByLabelText("Betrag"), "600");
 
@@ -535,7 +546,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+    await formularOeffnen();
     expect(screen.getByLabelText("Status")).toHaveValue("SENT");
 
     await userEvent.selectOptions(screen.getByLabelText("Art"), "EXPENSE");
@@ -547,7 +558,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Status")).toBeInTheDocument());
+    await formularOeffnen();
     expect(screen.queryByLabelText("Anzahlung auf")).not.toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText("Status"), "DEPOSIT");
@@ -562,7 +573,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Betrag"), "1200");
 
     const split = within(screen.getByTestId("split-preview"));
@@ -582,7 +593,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Betrag"), "1200");
 
     const split = within(screen.getByTestId("split-preview"));
@@ -595,7 +606,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Betrag"), "1000");
     await userEvent.selectOptions(screen.getByLabelText("USt-Satz"), "0");
 
@@ -740,7 +751,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
 
     expect(screen.queryByTestId("split-preview")).not.toBeInTheDocument();
   });
@@ -892,7 +903,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Beschreibung")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Beschreibung"), "Rechnung für @Acme");
 
     const option = await screen.findByRole("option", { name: /Acme Corp/ });
@@ -907,7 +918,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance());
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Beschreibung")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Beschreibung"), "@Acme");
     await userEvent.click(await screen.findByRole("option", { name: /Acme Corp/ }));
     await userEvent.click(screen.getByText("Verknüpfung lösen"));
@@ -952,7 +963,7 @@ describe("FinancePage", () => {
     ({ restore } = mockFinance({ "/storage/files": [{ name: "RE-004.pdf", directory: false, size: 1024, lastModified: 0 }] }));
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Rechnung wählen" })).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.click(screen.getByRole("button", { name: "Rechnung wählen" }));
 
     const dialog = within(await screen.findByRole("dialog", { name: "Rechnung auswählen" }));
@@ -1213,11 +1224,96 @@ describe("FinancePage", () => {
 
     renderWithRouter(<FinancePage user={testUser} />);
 
-    await waitFor(() => expect(screen.getByLabelText("Betrag")).toBeInTheDocument());
+    await formularOeffnen();
     await userEvent.type(screen.getByLabelText("Betrag"), "120");
     await userEvent.type(screen.getByLabelText("Beschreibung"), "Test");
     await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
 
     expect(await screen.findByText("Unzulässiger USt-Satz: 19")).toBeInTheDocument();
+  });
+  // ── Eingabe als Fenster ─────────────────────────────────────────
+
+  /**
+   * Vorher stand das Formular dauerhaft zwischen Kennzahlen und Liste. Beim
+   * Bearbeiten sah man deshalb nicht, dass ueberhaupt etwas passiert war.
+   */
+  it("zeigt das Formular erst nach einem Klick auf das Plus", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await screen.findByRole("button", { name: /Eintrag hinzufügen/ });
+    expect(screen.queryByLabelText("Betrag")).not.toBeInTheDocument();
+
+    await formularOeffnen();
+    expect(screen.getByRole("dialog", { name: "Neuer Eintrag" })).toBeInTheDocument();
+  });
+
+  it("schließt das Fenster wieder", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await formularOeffnen();
+    await userEvent.click(screen.getByRole("button", { name: "Schließen" }));
+
+    await waitFor(() => expect(screen.queryByLabelText("Betrag")).not.toBeInTheDocument());
+  });
+
+  // ── Wem der Eintrag gehoert ─────────────────────────────────────
+
+  /**
+   * Der Kern: wer tippt, ist nicht wer es zu versteuern hat. Ohne diese
+   * Trennung verschoebe ein fuer den anderen erfasster Eintrag dessen Umsatz
+   * und damit die SVS- und Kleinunternehmergrenze bei beiden.
+   */
+  it("schickt die zugeordnete Person mit, nicht nur den Tipper", async () => {
+    const m = mockFinance();
+    restore = m.restore;
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await formularOeffnen();
+    await userEvent.selectOptions(screen.getByLabelText("Gehört zu"), testUser2.id);
+    await userEvent.type(screen.getByLabelText("Betrag"), "1200");
+    await userEvent.type(screen.getByLabelText("Beschreibung"), "Rechnung von bob");
+    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
+
+    await waitFor(() => {
+      const post = m.mock.mock.calls.find(([, init]) => init?.method === "POST");
+      const body = JSON.parse(post![1]!.body as string);
+      expect(body.ownerId).toBe(testUser2.id);
+      expect(body.createdBy).toBe(testUser.id);
+    });
+  });
+
+  it("steht ohne Auswahl auf einem selbst", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await formularOeffnen();
+    expect(screen.getByLabelText("Gehört zu")).toHaveValue(testUser.id);
+  });
+
+  /**
+   * Der Fall aus dem echten Betrieb: Simeon bearbeitet eine Rechnung, die
+   * Hanxiang gehoert. Angeboten wurde "teilen mit Hanxiang" — also mit sich
+   * selbst, was der Server ablehnt. Die Gegenseite richtet sich nach dem
+   * Eigentuemer, nicht nach der angemeldeten Person.
+   */
+  it("bietet als Teilungspartner die Gegenseite zum Eigentümer an", async () => {
+    ({ restore } = mockFinance());
+    renderWithRouter(<FinancePage user={testUser} />);
+
+    await formularOeffnen();
+
+    // Standard: gehoert mir, also teilen mit dem anderen
+    expect(
+      screen.getByRole("checkbox", { name: new RegExp(`50/50 geteilt mit.*${testUser2.username}`) }),
+    ).toBeInTheDocument();
+
+    // Umgestellt auf den anderen: jetzt muss ich die Gegenseite sein
+    await userEvent.selectOptions(screen.getByLabelText("Gehört zu"), testUser2.id);
+
+    expect(
+      screen.getByRole("checkbox", { name: new RegExp(`50/50 geteilt mit.*${testUser.username}`) }),
+    ).toBeInTheDocument();
   });
 });
