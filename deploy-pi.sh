@@ -17,11 +17,9 @@ echo "=== MiniCRM — Build & Deploy auf $PI_HOST ==="
 # Das Zielverzeichnis muss dem entsprechen, aus dem der Dienst startet.
 # Das Script kopiert die Unit-Datei mit, ein Auseinanderlaufen faellt sonst
 # erst auf, wenn der Dienst das JAR nicht findet.
-SERVICE_DIR=$(grep -oP '(?<=^WorkingDirectory=).*' minicrm.service || true)
-if [ -z "$SERVICE_DIR" ]; then
-  # grep -P gibt es auf macOS nicht — Rueckfallweg
-  SERVICE_DIR=$(sed -n 's/^WorkingDirectory=//p' minicrm.service)
-fi
+# sed statt grep -oP: -P gibt es im grep von macOS nicht, das warf jedes Mal
+# eine Fehlermeldung samt Hilfetext aus, obwohl der Rueckfallweg griff.
+SERVICE_DIR=$(sed -n 's/^WorkingDirectory=//p' minicrm.service)
 if [ "$SERVICE_DIR" != "$PI_DIR" ]; then
   echo "ABBRUCH: Zielverzeichnis und Dienst passen nicht zusammen."
   echo "  deploy-pi.sh liefert nach : $PI_DIR"
@@ -99,23 +97,44 @@ scp docker-compose.yml "$PI_HOST:$PI_DIR/"
 scp minicrm.service "$PI_HOST:$PI_DIR/"
 
 # ── 5. Dienst neu starten ───────────────────────────────────────────
-echo "→ Dienst einrichten..."
-ssh "$PI_HOST" "sudo cp $PI_DIR/minicrm.service /etc/systemd/system/ \
+# sudo auf dem Pi verlangt ein Passwort, und ohne Terminal bricht es mit
+# "a terminal is required to read the password" ab. Deshalb -t: damit wird
+# ein Terminal durchgereicht und die Abfrage erscheint hier. Einmal tippen
+# genuegt, sudo merkt es sich fuer die restlichen Befehle der Kette.
+echo "→ Dienst einrichten (sudo-Passwort des Pi wird gleich abgefragt)..."
+ssh -t "$PI_HOST" "sudo cp $PI_DIR/minicrm.service /etc/systemd/system/ \
   && sudo systemctl daemon-reload \
   && sudo systemctl enable minicrm \
   && sudo systemctl restart minicrm"
 
 # ── 6. Nachsehen, ob er auch wirklich laeuft ────────────────────────
+#
+# Geprueft wird per HTTP und nicht ueber systemctl: "aktiv" heisst nur, dass
+# der Prozess laeuft — nicht, dass Spring hochgekommen ist und ausliefert.
+# Ausserdem kaeme systemctl als normaler Benutzer ueber SSH nicht an den DBus
+# und meldete faelschlich "laeuft nicht".
+#
+# Gewartet wird in Schritten statt fix: auf dem Pi dauert der Start deutlich
+# laenger als lokal, und ein starres sleep ist entweder zu kurz oder vergeudet
+# jedes Mal Zeit.
 echo "→ Warte auf Start..."
-sleep 8
-if ssh "$PI_HOST" "systemctl is-active --quiet minicrm"; then
+BEREIT=0
+for _ in $(seq 1 30); do
+  if ssh "$PI_HOST" "curl -sf -o /dev/null -m 3 http://localhost:8080/api/auth/users" 2>/dev/null; then
+    BEREIT=1
+    break
+  fi
+  sleep 3
+done
+
+if [ "$BEREIT" = "1" ]; then
   echo ""
   echo "=== Fertig — App laeuft auf http://100.120.87.43:8080 ==="
-  ssh "$PI_HOST" "journalctl -u minicrm -n 3 --no-pager | tail -3" || true
 else
   echo ""
-  echo "ACHTUNG: Dienst laeuft nach dem Neustart nicht."
-  ssh "$PI_HOST" "journalctl -u minicrm -n 30 --no-pager" || true
+  echo "ACHTUNG: App antwortet nach 90 Sekunden nicht. Letzte Logzeilen:"
+  ssh -t "$PI_HOST" "sudo journalctl -u minicrm -n 30 --no-pager" || true
   exit 1
 fi
-echo "    Logs: ssh $PI_HOST 'journalctl -u minicrm -f'"
+# journalctl liest hier nur root — der Benutzer ist nicht in systemd-journal.
+echo "    Logs: ssh $PI_HOST 'sudo journalctl -u minicrm -f'"
