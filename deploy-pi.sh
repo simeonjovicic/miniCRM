@@ -71,13 +71,25 @@ echo "→ JAR gebaut: $JAR ($(du -h "$JAR" | cut -f1))"
 
 # Der Pi laeuft auf Java 21 — hier wird mit einem neueren JDK gebaut.
 # Class-File 65 entspricht Java 21; alles darueber startet dort nicht.
+#
+# NR==1 ist noetig: od haengt auf macOS eine Zeile mit dem Endversatz an, ohne
+# das lieferte awk zwei Zahlen und der Vergleich unten scheiterte mit
+# "integer expression expected" — und liess damit alles durch.
 MAJOR=$(unzip -p "$JAR" BOOT-INF/classes/com/collabcrm/CollabCrmApplication.class \
-        | od -An -tu1 -j6 -N2 | awk '{print $1*256+$2}')
+        | od -An -tu1 -j6 -N2 | awk 'NR==1 {print $1*256+$2; exit}')
+# Eine Pruefung, die sich selbst nicht lesen kann, muss abbrechen und nicht
+# durchwinken — sonst faellt erst auf dem Pi auf, dass sie nichts geprueft hat.
+if ! [[ "$MAJOR" =~ ^[0-9]+$ ]]; then
+  echo "ABBRUCH: Class-File-Version im JAR nicht lesbar (gelesen: '$MAJOR')."
+  echo "  Ohne diese Pruefung koennte ein zu neues JAR auf dem Pi landen."
+  exit 1
+fi
 if [ "$MAJOR" -gt 65 ]; then
   echo "ABBRUCH: JAR enthaelt Class-File $MAJOR (Java $((MAJOR-44)))."
   echo "  Der Pi hat Java 21 und wuerde mit UnsupportedClassVersionError abbrechen."
   exit 1
 fi
+echo "→ Java-Prueflauf: Class-File $MAJOR (Java $((MAJOR-44))) — passt zum Pi"
 
 # ── 4. Uebertragen ──────────────────────────────────────────────────
 echo "→ Deploy nach $PI_DIR..."
